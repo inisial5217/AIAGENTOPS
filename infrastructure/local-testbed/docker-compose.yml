@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cifo-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cifo_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cifo_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cifo_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../scripts/seed-data.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cifo_admin} -d ${POSTGRES_DB:-cifo_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cifo-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: cifo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-cifo_redis_secret}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-cifo_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cifo-network
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.99.0
+    container_name: cifo-victoriametrics
+    restart: unless-stopped
+    ports:
+      - "8428:8428"
+    volumes:
+      - vm_data:/victoria-metrics-data
+    command:
+      - "-retentionPeriod=90d"
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-httpListenAddr=:8428"
+    networks:
+      - cifo-network
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: cifo-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - victoriametrics
+    networks:
+      - cifo-network
+
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: cifo-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - cifo-network
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    container_name: cifo-tempo
+    restart: unless-stopped
+    ports:
+      - "3200:3200"
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/tmp/tempo
+    networks:
+      - cifo-network
+
+networks:
+  cifo-network:
+    name: cifo-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  vm_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:

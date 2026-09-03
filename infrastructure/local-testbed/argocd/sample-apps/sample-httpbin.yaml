@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-httpbin
+  namespace: default
+  labels:
+    app: sample-httpbin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample-httpbin
+  template:
+    metadata:
+      labels:
+        app: sample-httpbin
+    spec:
+      containers:
+        - name: httpbin
+          image: kennethreitz/httpbin
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-httpbin-service
+  namespace: default
+spec:
+  selector:
+    app: sample-httpbin
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP

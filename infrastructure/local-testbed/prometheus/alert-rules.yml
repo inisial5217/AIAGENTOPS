@@ -1,0 +1,134 @@
+groups:
+  - name: cifo_infrastructure_alerts
+    rules:
+      # 1. Container CPU High
+      - alert: ContainerCpuHigh
+        expr: (sum(rate(container_cpu_usage_seconds_total{name!=""}[5m])) by (name) * 100) > 85
+        for: 5m
+        labels:
+          severity: WARNING
+          source: docker
+        annotations:
+          summary: "Container CPU high usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU usage is {{ $value }}% (above 85% threshold)."
+
+      # 2. Container CPU Critical
+      - alert: ContainerCpuCritical
+        expr: (sum(rate(container_cpu_usage_seconds_total{name!=""}[3m])) by (name) * 100) > 95
+        for: 3m
+        labels:
+          severity: CRITICAL
+          source: docker
+        annotations:
+          summary: "Container CPU critical on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU usage exceeded 95% for 3 minutes."
+
+      # 3. Container OOM Killed
+      - alert: ContainerOOMKilled
+        expr: container_oom_events_total > 0
+        for: 0m
+        labels:
+          severity: CRITICAL
+          source: docker
+        annotations:
+          summary: "Container OOM killed: {{ $labels.name }}"
+          description: "Container {{ $labels.name }} was terminated due to Out Of Memory."
+
+      # 4. ArgoCD Sync Failed
+      - alert: ArgoCDSyncFailed
+        expr: argocd_app_sync_status{sync_status="Failed"} == 1
+        for: 1m
+        labels:
+          severity: CRITICAL
+          source: argocd
+        annotations:
+          summary: "ArgoCD sync failed for application {{ $labels.name }}"
+          description: "ArgoCD application {{ $labels.name }} synchronization failed."
+
+      # 5. ArgoCD App Degraded
+      - alert: ArgoCDAppDegraded
+        expr: argocd_app_health_status{health_status="Degraded"} == 1
+        for: 2m
+        labels:
+          severity: WARNING
+          source: argocd
+        annotations:
+          summary: "ArgoCD application degraded: {{ $labels.name }}"
+          description: "Application {{ $labels.name }} health status is Degraded."
+
+      # 6. Pod CrashLooping
+      - alert: PodCrashLooping
+        expr: increase(kube_pod_container_status_restarts_total[10m]) > 3
+        for: 2m
+        labels:
+          severity: CRITICAL
+          source: kubernetes
+        annotations:
+          summary: "Pod crashlooping: {{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} restarted more than 3 times in 10 minutes."
+
+      # 7. Disk Usage High
+      - alert: DiskUsageHigh
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes * 100) < 20
+        for: 5m
+        labels:
+          severity: WARNING
+          source: node
+        annotations:
+          summary: "Disk usage high on {{ $labels.instance }}"
+          description: "Disk usage is above 80% on {{ $labels.mountpoint }}."
+
+      # 8. Disk Usage Critical
+      - alert: DiskUsageCritical
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes * 100) < 10
+        for: 2m
+        labels:
+          severity: CRITICAL
+          source: node
+        annotations:
+          summary: "Disk usage critical on {{ $labels.instance }}"
+          description: "Disk usage is above 90% on {{ $labels.mountpoint }}."
+
+      # 9. Node Not Ready
+      - alert: NodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 1m
+        labels:
+          severity: CRITICAL
+          source: kubernetes
+        annotations:
+          summary: "Kubernetes node not ready: {{ $labels.node }}"
+          description: "Node {{ $labels.node }} is in NotReady state."
+
+      # 10. Backend Health Check Failed
+      - alert: BackendHealthCheckFailed
+        expr: probe_success{job="cifo-backend"} == 0
+        for: 30s
+        labels:
+          severity: CRITICAL
+          source: backend
+        annotations:
+          summary: "CIFO Backend /healthz probe failed"
+          description: "Backend health endpoint has been failing for more than 30 seconds."
+
+      # 11. AI Service Unavailable
+      - alert: AIServiceUnavailable
+        expr: ai_service_available_providers == 0
+        for: 1m
+        labels:
+          severity: WARNING
+          source: ai-service
+        annotations:
+          summary: "All AI model providers are currently unavailable"
+          description: "No AI model provider (Gemini, OpenAI, Anthropic, Ollama) is reachable."
+
+      # 12. High Error Rate
+      - alert: HighErrorRate
+        expr: (sum(rate(http_requests_total{status_code=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100) > 5
+        for: 5m
+        labels:
+          severity: WARNING
+          source: backend
+        annotations:
+          summary: "High HTTP error rate (> 5%) detected"
+          description: "Backend HTTP 5xx error rate is {{ $value }}%."

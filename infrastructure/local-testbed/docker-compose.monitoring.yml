@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: cifo-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - cifo-network
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: cifo-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - cifo-network
+
+networks:
+  cifo-network:
+    external: true
+    name: cifo-network
+
+volumes:
+  alertmanager_data:
+  grafana_data:
