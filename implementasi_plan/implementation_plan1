@@ -1,0 +1,148 @@
+# CIFO Enterprise Monitoring & AIOps Platform - Implementation Plan
+
+## Executive Summary & Architectural Analysis
+
+Berdasarkan analisis menyeluruh terhadap dokumen perancangan:
+1. [arsitektur_sistem.md](file:///d:/agent%20v2/arsitektur_diskusi/arsitektur_sistem.md) (Versi 2.0 - Post-Audit):
+   - **Pola Arsitektur**: Modular Monolith berbasis DDD (Domain-Driven Design) menggunakan Go 1.22+ dengan web framework Echo v4, REST API untuk frontend, serta gRPC internal untuk komunikasi ke AI Service.
+   - **Frontend**: Next.js 14+ (App Router, TypeScript strict), Radix UI primitives, Tailwind CSS, Zustand, TanStack Query v5, Apache ECharts v5, dan WebSocket real-time. Tema default: Dark Mode enterprise dengan aksen cyan/teal.
+   - **Database & Observability**: PostgreSQL 16 (metadata, audit log, RBAC, sesi AI), Redis 7 (cache, rate limiting, Asynq broker), VictoriaMetrics (long-term time-series PromQL), Loki v3 (structured logs), Grafana Tempo (distributed tracing).
+   - **AI Service**: Python 3.12 + FastAPI + LangChain, arsitektur Multi-Model (Gemini 2.0 Flash / 1.5 Pro primary -> GPT-4o fallback 1 -> Claude 3.5 Sonnet fallback 2 -> Ollama offline fallback 3) dilengkapi Circuit Breaker dan Human-in-the-Loop approval untuk write tools.
+   - **DevOps & Testbed**: Docker daemon lokal, K3d (Kubernetes lokal 3 node), dan ArgoCD lokal dengan sample deployments untuk pengujian data nyata tanpa mock data.
+
+2. [plan.md](file:///d:/agent%20v2/arsitektur_diskusi/plan.md) (Master Implementation Plan):
+   - Terbagi menjadi **16 Fase terstruktur (Fase 0 s/d Fase 15)** dengan dependensi ketat:
+     - **Fase 0**: Bootstrap Proyek & Monorepo Scaffolding
+     - **Fase 1**: Infrastruktur Lokal (Docker Compose, K3d, ArgoCD, Prometheus)
+     - **Fase 2**: Fondasi Backend (Echo, Postgres, Redis, Migrations, Slog)
+     - **Fase 3**: Autentikasi & Otorisasi (Keycloak, JWT, RBAC)
+     - **Fase 4**: Fondasi Frontend (Layout, Dark Theme, Zustand, UI Primitives)
+     - **Fase 5**: Monitoring Docker (Docker Engine API, Live stats, Container tables)
+     - **Fase 6**: Monitoring Kubernetes & ArgoCD (client-go, ArgoCD API, Pods, Deployments)
+     - **Fase 7**: Real-time & WebSocket (Log streaming, Push notifications)
+     - **Fase 8**: Alerting & Incident Management (Alertmanager, Telegram Bot, Incident Lifecycle)
+     - **Fase 9**: AI Service & Chat Agent (FastAPI, LangChain, Multi-Model, Tool calling)
+     - **Fase 10**: Settings & Administrasi (User management, Telegram configs, AI limits)
+     - **Fase 11**: Observability (OpenTelemetry distributed tracing, Log correlation)
+     - **Fase 12**: Security Hardening (Vault, Docker socket proxy, NetworkPolicy)
+     - **Fase 13**: Testing Komprehensif (Unit, Integration, Playwright E2E, K6 load test)
+     - **Fase 14**: CI/CD Pipeline (GitHub Actions, Helm charts)
+     - **Fase 15**: Dokumentasi & Production Readiness
+
+3. [agent_instructions.md](file:///d:/agent%20v2/arsitektur_diskusi/agent_instructions.md) & [audit_arsitektur.md](file:///d:/agent%20v2/arsitektur_diskusi/audit_arsitektur.md):
+   - Standar kode ketat: Komentar ringkas 1-4 kata, tanpa simbol dekoratif.
+   - Zero Mock Data: Seluruh metrik dan log harus berasal dari container/cluster nyata.
+   - Error wrapping eksplisit (`fmt.Errorf("%w")`), custom `AppError`, dan tanpa `panic()`.
+   - Strict TypeScript (`strict: true`, no `any`).
+
+4. **Kesiapan Lingkungan Eksekusi (Host Machine Audit)**:
+   - Node.js `v26.0.0` (Ready)
+   - Docker `29.7.2` (Ready)
+   - Python `3.12` via launcher (Ready)
+   - Kubectl `v1.36.1` (Ready)
+   - Git `2.37.3` (Ready)
+   - Winget `v1.29` (Ready)
+   - *Go runtime*: Belum terdeteksi di PATH sistem host; dapat diinstal langsung via `winget install GoLang.Go` sebelum kompilasi backend.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Instalasi Toolchain Go**: Untuk kompilasi Backend Go pada Fase 0 dan seterusnya, runtime Golang perlu diaktifkan di host sistem (`winget install GoLang.Go` atau installer resmi). Apakah Anda setuju instalasi Go dijalankan melalui terminal?
+
+> [!NOTE]
+> **Pendekatan Desain UI**: Folder `referensi tampilan/` akan dijadikan acuan palet warna (dark mode slate/zinc, aksen teal/cyan `#00e5ff`, merah `#ff3b57`, hijau `#00e676`), tipografi (Inter), dan tata letak modular (grid 6 stat cards, spline chart ECharts, terminal log, serta floating AI widget), dengan fleksibilitas untuk menyempurnakan ergonomi dan responsivitas modern.
+
+---
+
+## Roadmap Fase demi Fase
+
+```mermaid
+graph TD
+    F0["Fase 0: Bootstrap & Monorepo"] --> F1["Fase 1: Local Testbed (Docker/K3d)"]
+    F0 --> F2["Fase 2: Backend Foundation"]
+    F1 --> F2
+    F2 --> F3["Fase 3: Auth & RBAC"]
+    F3 --> F4["Fase 4: Frontend Foundation"]
+    F4 --> F5["Fase 5: Monitoring Docker"]
+    F5 --> F6["Fase 6: Monitoring K8s & ArgoCD"]
+    F6 --> F7["Fase 7: Real-time WebSocket"]
+    F7 --> F8["Fase 8: Alerts & Incidents"]
+    F8 --> F9["Fase 9: AI Service & Chat Agent"]
+    F9 --> F10["Fase 10: Settings & Admin"]
+    F10 --> F11["Fase 11: Tracing & Logging"]
+    F11 --> F12["Fase 12: Security Hardening"]
+    F12 --> F13["Fase 13: Testing Suite"]
+    F13 --> F14["Fase 14: CI/CD"]
+    F14 --> F15["Fase 15: Production Readiness"]
+```
+
+---
+
+## Rencana Aksi Segera: FASE 0 (Bootstrap Proyek & Monorepo)
+
+Fase pertama yang akan kita eksekusi secara tuntas adalah **Fase 0**:
+
+### 1. Struktur Direktori Root & Konfigurasi Monorepo
+- [NEW] Root `.gitignore` (node_modules, dist, .next, __pycache__, .env, vendor/, dll)
+- [NEW] Root `.editorconfig` (LF, utf-8, indent 2 untuk json/yaml/ts, indent 4 untuk go/py)
+- [NEW] Root `turbo.json` (pipeline build, test, lint, dev)
+- [NEW] Root `Makefile` & PowerShell command helpers
+- [NEW] Root `README.md`
+- [NEW] Root `go.work` (referensi `./apps/backend` dan `./tests/integration`)
+
+### 2. Scaffolding Backend Go (`/apps/backend`)
+- [NEW] `/apps/backend/go.mod` (module `github.com/cifo-monitoring/backend`)
+- [NEW] Inisialisasi dependensi: Echo v4, pgx/v5, go-redis/v9, validator/v10, slog
+- [NEW] `/apps/backend/pkg/apperror/error.go` (AppError struct & helpers)
+- [NEW] `/apps/backend/pkg/logger/logger.go` (structured slog wrapper)
+- [NEW] `/apps/backend/pkg/validator/validator.go`
+- [NEW] `/apps/backend/cmd/server/main.go` & `/apps/backend/cmd/worker/main.go` (stubs)
+- [NEW] File stub internal packages (`config`, `handler`, `middleware`, `model`, `repository`, `service`, `integration`, `ws`)
+
+### 3. Scaffolding Frontend Next.js 14 (`/apps/frontend`)
+- Inisialisasi Next.js 14 App Router dengan TypeScript, Tailwind CSS, ESLint, alias `@/*`
+- Instalasi dependensi: Zustand, TanStack Query v5, Axios, ECharts, Radix UI Primitives, clsx, date-fns
+- [NEW] Konfigurasi design tokens & tema: `/src/styles/globals.css`, `/src/styles/tokens.css`, `tailwind.config.ts`
+- [NEW] Setup layout stub & clean default boilerplate
+
+### 4. Scaffolding AI Service Python (`/apps/ai-service`)
+- [NEW] `/apps/ai-service/pyproject.toml` & `requirements.txt`
+- [NEW] `/apps/ai-service/app/main.py` (FastAPI entrypoint)
+- [NEW] `/apps/ai-service/app/config/settings.py` (Pydantic Settings)
+- [NEW] Subfolder stubs: `agent`, `tools`, `providers`, `prompts`, `proto`
+
+### 5. Shared Packages & API Contracts (`/packages`)
+- [NEW] `/packages/api-contracts/openapi.yaml` (OpenAPI 3.1 contract awal)
+- [NEW] `/packages/api-contracts/proto/common.proto` & `ai_service.proto`
+- [NEW] `/packages/theme/colors.json` & `typography.json` (design tokens terpusat)
+
+---
+
+## Verification Plan
+
+### Automated Build & Lint Verification
+1. **Frontend**:
+   ```bash
+   cd apps/frontend
+   npm run build
+   ```
+   *Expected: Build sukses menghasilkan output Next.js.*
+2. **Backend**:
+   ```bash
+   cd apps/backend
+   go build ./...
+   ```
+   *Expected: Kompilasi seluruh package internal tanpa error.*
+3. **AI Service**:
+   ```bash
+   cd apps/ai-service
+   py -3.12 -c "import app.main; print('AI Service import OK')"
+   ```
+   *Expected: Seluruh modul Python dapat di-import tanpa sintaks/path error.*
+
+### Manual Verification
+- Memeriksa seluruh tree struktur direktori monorepo apakah sesuai persis dengan standar dokumen arsitektur Bagian 9.
+- Memastikan tidak ada file credential (`.env`) yang ter-commit atau berada di luar `.gitignore`.
+- Mengkonfirmasi linting dan formatting rules aktif di editor.

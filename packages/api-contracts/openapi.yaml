@@ -1,0 +1,284 @@
+openapi: 3.1.0
+info:
+  title: CIFO Enterprise Monitoring & AIOps API
+  version: 1.0.0
+  description: REST API specification for CIFO infrastructure monitoring platform.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      description: Returns 200 OK if service process is running.
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Returns 200 if dependencies (Postgres, Redis, Docker, ArgoCD) are ready.
+      responses:
+        '200':
+          description: All dependencies ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: Dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      responses:
+        '200':
+          description: Metrics in Prometheus exposition format
+
+  /api/v1/auth/me:
+    get:
+      summary: Get current authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/monitoring/stats:
+    get:
+      summary: Get aggregate dashboard stats
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  /api/v1/docker/containers:
+    get:
+      summary: List Docker containers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, running, stopped]
+            default: all
+      responses:
+        '200':
+          description: Container list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Container'
+
+  /api/v1/incidents:
+    get:
+      summary: List incidents
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Incidents list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Incident'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Unauthorized request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+
+    ReadyResponse:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          example: ready
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              example: ok
+            redis:
+              type: string
+              example: ok
+            docker:
+              type: string
+              example: ok
+            argocd:
+              type: string
+              example: ok
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: AUTH_UNAUTHORIZED
+        message:
+          type: string
+          example: Invalid or missing authorization token
+        trace_id:
+          type: string
+          example: 4bf92f3577b34da6a3ce929d0e0e4736
+
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - role
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, devops, viewer]
+
+    DashboardStats:
+      type: object
+      required:
+        - total_containers
+        - total_replicas
+        - ram_usage_percent
+        - containers_on
+        - containers_off
+        - active_incidents
+      properties:
+        total_containers:
+          type: integer
+        total_replicas:
+          type: integer
+        ram_usage_percent:
+          type: number
+        containers_on:
+          type: integer
+        containers_off:
+          type: integer
+        active_incidents:
+          type: integer
+
+    Container:
+      type: object
+      required:
+        - id
+        - name
+        - image
+        - status
+        - state
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        image:
+          type: string
+        status:
+          type: string
+        state:
+          type: string
+        cpu_percent:
+          type: number
+        memory_usage_bytes:
+          type: integer
+        uptime_seconds:
+          type: integer
+
+    Incident:
+      type: object
+      required:
+        - id
+        - title
+        - severity
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, info]
+        status:
+          type: string
+          enum: [open, acknowledged, investigating, resolved, closed]
+        source:
+          type: string
+        created_at:
+          type: string
+          format: date-time

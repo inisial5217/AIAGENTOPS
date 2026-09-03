@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package cifo.ai;
+
+option go_package = "github.com/cifo-monitoring/backend/pkg/proto/ai;ai";
+
+import "common.proto";
+
+service AIService {
+  rpc Chat (ChatRequest) returns (ChatResponse);
+  rpc DiagnoseIncident (DiagnoseRequest) returns (DiagnoseResponse);
+  rpc ExecuteToolApproval (ToolApprovalRequest) returns (ToolApprovalResponse);
+}
+
+message Message {
+  string role = 1;
+  string content = 2;
+  string timestamp = 3;
+}
+
+message ChatRequest {
+  string session_id = 1;
+  string user_id = 2;
+  string user_role = 3;
+  string message = 4;
+  repeated Message history = 5;
+  string model_preference = 6;
+}
+
+message ToolCall {
+  string tool_name = 1;
+  string parameters_json = 2;
+  bool requires_approval = 3;
+}
+
+message ChatResponse {
+  string session_id = 1;
+  string message = 2;
+  string model_used = 3;
+  int32 input_tokens = 4;
+  int32 output_tokens = 5;
+  repeated ToolCall tool_calls = 6;
+  bool fallback_triggered = 7;
+}
+
+message DiagnoseRequest {
+  string incident_id = 1;
+  string alert_name = 2;
+  cifo.common.Severity severity = 3;
+  string resource_type = 4;
+  string resource_id = 5;
+  string namespace = 6;
+  repeated string recent_logs = 7;
+}
+
+message DiagnoseResponse {
+  string root_cause_analysis = 1;
+  string recommended_action = 2;
+  repeated ToolCall suggested_tools = 3;
+  string model_used = 4;
+}
+
+message ToolApprovalRequest {
+  string session_id = 1;
+  string tool_name = 2;
+  string parameters_json = 3;
+  bool approved = 4;
+  string user_id = 5;
+}
+
+message ToolApprovalResponse {
+  bool executed = 1;
+  string output = 2;
+  string error = 3;
+}
