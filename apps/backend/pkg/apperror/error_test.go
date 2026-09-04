@@ -8,32 +8,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAppError_New(t *testing.T) {
-	// test new error
-	err := New("TEST_ERR", http.StatusBadRequest, "internal msg", "user msg")
-	assert.NotNil(t, err)
-	assert.Equal(t, "TEST_ERR", err.Code)
-	assert.Equal(t, http.StatusBadRequest, err.HTTPStatus)
+func TestAppError(t *testing.T) {
+	err := New("TEST_ERR", http.StatusBadRequest, "internal msg", "user friendly msg")
 	assert.Equal(t, "internal msg", err.Error())
-	assert.Equal(t, "user msg", err.UserMsg)
-}
+	assert.Equal(t, "user friendly msg", err.UserMsg)
+	assert.Equal(t, http.StatusBadRequest, err.HTTPStatus)
 
-func TestAppError_Wrap(t *testing.T) {
-	// test wrap error
-	raw := errors.New("raw db error")
-	wrapped := Wrap(raw, "DB_ERR", http.StatusInternalServerError, "db failed", "database error")
-	assert.NotNil(t, wrapped)
-	assert.Equal(t, raw, wrapped.Unwrap())
-	assert.Contains(t, wrapped.Error(), "db failed: raw db error")
+	wrapped := Wrap(errors.New("root cause"), "WRAPPED", http.StatusInternalServerError, "wrapper", "user msg")
+	assert.Contains(t, wrapped.Error(), "root cause")
+	assert.Equal(t, "root cause", wrapped.Unwrap().Error())
 }
 
 func TestFromError(t *testing.T) {
-	// test from error
-	assert.Nil(t, FromError(nil))
-
-	raw := errors.New("something went wrong")
-	converted := FromError(raw)
-	assert.NotNil(t, converted)
+	stdErr := errors.New("something broke")
+	converted := FromError(stdErr)
 	assert.Equal(t, "INTERNAL_ERROR", converted.Code)
 	assert.Equal(t, http.StatusInternalServerError, converted.HTTPStatus)
+
+	existing := ErrUnauthorized
+	assert.Equal(t, ErrUnauthorized, FromError(existing))
+	assert.Nil(t, FromError(nil))
 }

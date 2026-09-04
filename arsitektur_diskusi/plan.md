@@ -272,16 +272,16 @@ Buat `/scripts/seed-data.sql`:
 - Tidak ada data pengguna palsu. Hanya konfigurasi sistem wajib.
 
 ### Kriteria Penerimaan Fase 1:
-- [ ] `docker-compose up -d` berhasil menjalankan semua service (Postgres, Redis, VictoriaMetrics, Prometheus, Loki, Tempo, Alertmanager)
-- [ ] PostgreSQL dapat diakses di localhost:5432 dan menerima koneksi
-- [ ] Redis dapat diakses di localhost:6379 dan merespons PING
-- [ ] Prometheus UI accessible di localhost:9090 dan menampilkan target
-- [ ] VictoriaMetrics menerima data dari Prometheus remote write
-- [ ] K3d cluster berjalan: `kubectl get nodes` menampilkan 3 node Ready
-- [ ] ArgoCD berjalan: `kubectl get pods -n argocd` semua Running
-- [ ] Sample apps ter-deploy dan ArgoCD menunjukkan status Synced/Healthy
-- [ ] Alert rules terdaftar di Prometheus UI (/alerts)
-- [ ] setup-local.sh (atau .ps1) berjalan end-to-end tanpa error
+- [x] `docker-compose up -d` berhasil menjalankan semua service (Postgres, Redis, VictoriaMetrics, Prometheus, Loki, Tempo, Alertmanager)
+- [x] PostgreSQL dapat diakses di localhost:5432 dan menerima koneksi
+- [x] Redis dapat diakses di localhost:6379 dan merespons PING
+- [x] Prometheus UI accessible di localhost:9090 dan menampilkan target
+- [x] VictoriaMetrics menerima data dari Prometheus remote write
+- [x] K3d cluster berjalan: `kubectl get nodes` menampilkan 3 node Ready
+- [x] ArgoCD berjalan: `kubectl get pods -n argocd` semua Running
+- [x] Sample apps ter-deploy dan ArgoCD menunjukkan status Synced/Healthy
+- [x] Alert rules terdaftar di Prometheus UI (/alerts)
+- [x] setup-local.sh (atau .ps1) berjalan end-to-end tanpa error
 
 ---
 
@@ -509,17 +509,17 @@ Buat `/apps/backend/Dockerfile`:
 - Image size target: kurang dari 30MB
 
 ### Kriteria Penerimaan Fase 2:
-- [ ] Backend server start dan listen di port 8080
-- [ ] `GET /healthz` mengembalikan 200
-- [ ] `GET /readyz` mengembalikan 200 (semua dependensi connected)
-- [ ] `GET /metrics` mengembalikan format Prometheus
-- [ ] Database migration berhasil: semua tabel terbuat (users, ai_sessions, ai_messages, audit_log, ai_action_audit_log, incidents, ai_usage_tracking, notification_settings)
-- [ ] Seed data berhasil: roles dan konfigurasi default ter-insert
-- [ ] Graceful shutdown bekerja: SIGTERM mematikan server dengan bersih
-- [ ] Middleware logger mencatat setiap request ke stdout dalam format JSON
-- [ ] Middleware recovery menangkap panic tanpa crash
-- [ ] Rate limiter berfungsi: request ke-101 dalam 1 menit mendapat 429
-- [ ] Docker build berhasil dan image berjalan
+- [x] Backend server start dan listen di port 8080
+- [x] `GET /healthz` mengembalikan 200
+- [x] `GET /readyz` mengembalikan 200 (semua dependensi connected)
+- [x] `GET /metrics` mengembalikan format Prometheus
+- [x] Database migration berhasil: semua tabel terbuat (users, ai_sessions, ai_messages, audit_log, ai_action_audit_log, incidents, ai_usage_tracking, notification_settings)
+- [x] Seed data berhasil: roles dan konfigurasi default ter-insert
+- [x] Graceful shutdown bekerja: SIGTERM mematikan server dengan bersih
+- [x] Middleware logger mencatat setiap request ke stdout dalam format JSON
+- [x] Middleware recovery menangkap panic tanpa crash
+- [x] Rate limiter berfungsi: request ke-101 dalam 1 menit mendapat 429
+- [x] Docker build berhasil dan image berjalan
 
 ---
 

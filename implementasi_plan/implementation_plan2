@@ -1,0 +1,191 @@
+# Implementation Plan - FASE 2: Fondasi Backend
+
+Berdasarkan analisis mendalam terhadap [`arsitektur_sistem.md`](file:///d:/agent%20v2/arsitektur_diskusi/arsitektur_sistem.md), [`plan.md`](file:///d:/agent%20v2/arsitektur_diskusi/plan.md), dan [`agent_instructions.md`](file:///d:/agent%20v2/arsitektur_diskusi/agent_instructions.md), **Fase 2** bertujuan membangun fondasi backend Go yang lengkap, kokoh, modular (Domain-Driven Design), dan siap produksi.
+
+Setelah fase ini selesai, backend dapat menerima request HTTP, terhubung ke seluruh dependensi live (Postgres 16, Redis 7, Docker), mengeksekusi migrasi database secara otomatis, mengekspos metrik Prometheus, mencatat log terstruktur berstandar industri, dan melakukan graceful shutdown dengan aman.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Keputusan Arsitektur Kunci**:
+> 1. **Framework HTTP**: Menggunakan **Echo v4** (berbasis `net/http` standar Go) untuk menjamin kompatibilitas 100% dengan ekosistem middleware, OpenTelemetry instrumentation, dan standard libraries.
+> 2. **Database Driver**: Menggunakan **`pgx/v5` (`pgxpool`)** native dengan connection pool terkonfigurasi (MinConns: 5, MaxConns: 25) untuk performa maksimal tanpa overhead ORM berat.
+> 3. **Migrasi Database**: 6 migrasi skema SQL terkelola (`users`, `ai_sessions`, `audit_log`, `incidents`, `ai_usage_tracking`, `notification_settings`) yang dieksekusi secara otomatis saat backend startup dan dapat di-rollback.
+> 4. **Rate Limiting**: Sliding window berbasis Redis 7 untuk perlindungan endpoint dari serangan DDoS atau brute-force.
+> 5. **Zero Mock Data**: Seluruh health check `/readyz` menguji koneksi langsung ke kontainer PostgreSQL, Redis, dan Docker yang berjalan live.
+
+---
+
+## Proposed Changes
+
+```
+apps/backend/
+├── cmd/
+│   └── server/
+│       └── main.go                        # [MODIFY] Server entrypoint, middleware wiring, graceful shutdown
+├── internal/
+│   ├── config/
+│   │   └── config.go                      # [MODIFY] Environment parsing & mandatory validation
+│   ├── handler/
+│   │   ├── health_handler.go              # [MODIFY] Liveness (/healthz) & Readiness (/readyz) live checks
+│   │   └── metrics_handler.go             # [NEW] Prometheus /metrics handler & collector definitions
+│   ├── middleware/
+│   │   ├── logger.go                      # [NEW] Structured slog request logger with trace_id
+│   │   ├── recovery.go                    # [MODIFY] Panic recovery with stack trace & RFC 7807 500 error
+│   │   ├── cors.go                        # [NEW] Strict configurable CORS middleware
+│   │   ├── ratelimit.go                   # [NEW] Redis sliding window rate limiter
+│   │   └── auth.go                        # [NEW] Auth stub extraction for context
+│   └── repository/
+│       ├── db.go                          # [MODIFY] pgxpool connection manager with pooling & stats
+│       ├── redis.go                       # [NEW] Redis 7 client connection & PING healthcheck
+│       └── migrator.go                    # [NEW] Embedded SQL migration runner
+├── migrations/
+│   ├── 001_create_users.up.sql            # [NEW] Users table with keycloak_id, role, indexes
+│   ├── 001_create_users.down.sql          # [NEW] Rollback users
+│   ├── 002_create_ai_sessions.up.sql      # [NEW] ai_sessions & ai_messages tables
+│   ├── 002_create_ai_sessions.down.sql    # [NEW] Rollback ai_sessions
+│   ├── 003_create_audit_log.up.sql        # [NEW] audit_log & ai_action_audit_log
+│   ├── 003_create_audit_log.down.sql      # [NEW] Rollback audit_log
+│   ├── 004_create_incidents.up.sql        # [NEW] incidents table with lifecycle & RCA fields
+│   ├── 004_create_incidents.down.sql      # [NEW] Rollback incidents
+│   ├── 005_create_ai_usage_tracking.up.sql# [NEW] Token usage & cost tracking
+│   ├── 005_create_ai_usage_tracking.down.sql # [NEW] Rollback ai_usage_tracking
+│   ├── 006_create_notification_settings.up.sql # [NEW] Notification & Telegram settings
+│   └── 006_create_notification_settings.down.sql # [NEW] Rollback notification_settings
+├── pkg/
+│   ├── apperror/
+│   │   └── error.go                       # [MODIFY] RFC 7807 AppError with FromError & Unwrap
+│   └── logger/
+│       └── logger.go                      # [MODIFY] Slog JSON wrapper with trace context
+└── Dockerfile                             # [MODIFY] Multi-stage Alpine container build (< 30MB)
+```
+
+---
+
+### Component 1: Konfigurasi & Core Utilities
+
+#### [MODIFY] [`apps/backend/internal/config/config.go`](file:///d:/agent%20v2/apps/backend/internal/config/config.go)
+- Memperluas struct `Config` dengan seluruh parameter operasional:
+  - `Port`, `Environment`, `DatabaseDSN`, `RedisAddr`, `RedisPass`, `DockerHost`, `ArgoCDURL`, `ArgoCDToken`, `TelegramToken`, `AIServiceURL`, `LogLevel`, `AllowedOrigins`.
+- Menambahkan validasi wajib: `DatabaseDSN` dan `RedisAddr` tidak boleh kosong (return error terstruktur jika kosong).
+
+#### [MODIFY] [`apps/backend/pkg/logger/logger.go`](file:///d:/agent%20v2/apps/backend/pkg/logger/logger.go)
+- Menyediakan `New(level string)` yang mengembalikan JSON handler dengan default attribute `service="cifo-backend"`.
+- Mendukung ekstraksi dan injeksi otomatis `trace_id` dan `span_id` ke dalam context.
+
+#### [MODIFY] [`apps/backend/pkg/apperror/error.go`](file:///d:/agent%20v2/apps/backend/pkg/apperror/error.go)
+- Melengkapi fungsi `FromError(err error) *AppError` untuk konversi error standar Go menjadi RFC 7807 Problem Details.
+- Menjaga method `Unwrap() error` dan `Error() string`.
+
+---
+
+### Component 2: Akses Data & Migrasi Database
+
+#### [MODIFY] [`apps/backend/internal/repository/db.go`](file:///d:/agent%20v2/apps/backend/internal/repository/db.go)
+- Mengonfigurasi `pgxpool`:
+  - `MinConns: 5`, `MaxConns: 25`
+  - `MaxConnLifetime: 1h`, `MaxConnIdleTime: 15m`, `HealthCheckPeriod: 30s`
+- Logging inisialisasi dan penyediaan method `Close()` untuk graceful shutdown.
+
+#### [NEW] `apps/backend/internal/repository/redis.go`
+- Inisialisasi klien Redis 7 via `go-redis/v9`.
+- Melakukan healthcheck `PING` saat inisialisasi untuk memastikan otentikasi `requirepass` berhasil.
+
+#### [NEW] `apps/backend/internal/repository/migrator.go`
+- Embedded SQL migrator menggunakan `embed.FS` bawaan Go.
+- Menjalankan file migrasi secara berurutan dalam transaksi PostgreSQL yang aman (`BEGIN ... COMMIT`).
+- Mencatat versi migrasi yang telah selesai dieksekusi agar idempoten.
+
+#### [NEW] `apps/backend/migrations/` (12 SQL Files)
+- `001_create_users`: Skema pengguna (UUID, email unik, role, keycloak_id, indexes).
+- `002_create_ai_sessions`: Skema sesi percakapan AI dan pesan (CASCADE deletion, indexes).
+- `003_create_audit_log`: Skema audit log append-only & audit tindakan write AI (hash prompt, approval status).
+- `004_create_incidents`: Skema lifecycle insiden (open, acknowledged, resolved, alert_name, severity).
+- `005_create_ai_usage_tracking`: Skema pelacakan konsumsi token dan estimasi biaya per provider.
+- `006_create_notification_settings`: Skema preferensi notifikasi Telegram dan threshold batching.
+
+---
+
+### Component 3: Middleware Stack
+
+#### [NEW] `apps/backend/internal/middleware/logger.go`
+- Mencatat setiap request HTTP ke stdout dalam format JSON terstruktur (method, path, status_code, duration_ms, ip, user_agent, trace_id).
+
+#### [MODIFY] [`apps/backend/internal/middleware/recovery.go`](file:///d:/agent%20v2/apps/backend/internal/middleware/recovery.go)
+- Menangkap panic goroutine, mencatat stack trace via `slog.Error`, dan mengembalikan HTTP 500 JSON tanpa mematikan server.
+
+#### [NEW] `apps/backend/internal/middleware/cors.go`
+- Mengonfigurasi CORS ketat berdasarkan whitelist origin, mendukung methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, header `Authorization, Content-Type, X-Request-ID, X-Idempotency-Key`, dengan max-age 3600 detik.
+
+#### [NEW] `apps/backend/internal/middleware/ratelimit.go`
+- Implementasi sliding window counter pada Redis 7:
+  - Default: 100 req/menit per IP.
+  - Endpoint AI: 20 req/menit per user.
+  - Mengembalikan header `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+  - Mengembalikan HTTP 429 Too Many Requests jika kuota habis.
+
+#### [NEW] `apps/backend/internal/middleware/auth.go`
+- Stub middleware otentikasi JWT yang mengekstrak user ID dan role ke dalam Echo Context untuk digunakan handler downstream (implementasi penuh terintegrasi Keycloak di Fase 3).
+
+---
+
+### Component 4: Handlers, Metrik & Entrypoint
+
+#### [MODIFY] [`apps/backend/internal/handler/health_handler.go`](file:///d:/agent%20v2/apps/backend/internal/handler/health_handler.go)
+- `GET /healthz`: Liveness probe (HTTP 200 instan).
+- `GET /readyz`: Readiness probe yang menguji koneksi aktif live ke:
+  - PostgreSQL (`pool.Ping`)
+  - Redis (`client.Ping`)
+  - Docker Daemon (ping Docker API via socket)
+  - Mengembalikan 200 OK jika semua sehat, atau 503 Service Unavailable dengan rincian komponen yang gagal.
+
+#### [NEW] `apps/backend/internal/handler/metrics_handler.go`
+- Mendaftarkan dan mengekspos metrik Prometheus via `promhttp.Handler()`:
+  - `http_requests_total` (counter: method, path, status_code)
+  - `http_request_duration_seconds` (histogram: method, path)
+  - `active_websocket_connections` (gauge)
+  - `db_pool_active_connections` & `db_pool_idle_connections` (gauge)
+
+#### [MODIFY] [`apps/backend/cmd/server/main.go`](file:///d:/agent%20v2/apps/backend/cmd/server/main.go)
+- Mengorkestrasi pemuatan konfigurasi, inisialisasi logger, koneksi pool Postgres, koneksi Redis, eksekusi auto-migration, registrasi middleware, binding rute `/healthz`, `/readyz`, `/metrics`, dan start server.
+- Menangani `signal.NotifyContext` (SIGTERM/SIGINT) dengan graceful shutdown (timeout 30 detik), penutupan koneksi database pool, dan Redis.
+
+#### [MODIFY] [`apps/backend/Dockerfile`](file:///d:/agent%20v2/apps/backend/Dockerfile)
+- Optimasi multi-stage build Alpine (`golang:1.22-alpine` builder -> `alpine:3.19` runtime), non-root user `appuser`, CGO_ENABLED=0, dan healthcheck CMD.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Menjalankan unit tests untuk packages:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts/exec.ps1 "Set-Location 'd:\agent v2\apps\backend'; go test -v -race ./pkg/... ./internal/config/... ./internal/middleware/..."
+  ```
+- Memverifikasi kompilasi build bersih tanpa error:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts/exec.ps1 "Set-Location 'd:\agent v2\apps\backend'; go build -v ./..."
+  ```
+
+### Manual & Integration Verification (Live Testbed)
+1. **Server Start & Listen**:
+   - Jalankan backend Go: `go run cmd/server/main.go`
+   - Verifikasi log JSON muncul di stdout dengan level INFO dan key `service="cifo-backend"`.
+2. **Database Migration Verification**:
+   - Periksa tabel yang terbentuk di PostgreSQL live:
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File scripts/exec.ps1 "docker exec cifo-postgres psql -U cifo_admin -d cifo_db -c '\dt'"
+     ```
+   - Pastikan tabel `users`, `ai_sessions`, `ai_messages`, `audit_log`, `ai_action_audit_log`, `incidents`, `ai_usage_tracking`, dan `notification_settings` berhasil dibuat.
+3. **Health Check Probes**:
+   - Test liveness probe: `curl.exe -i http://localhost:8080/healthz` -> harus 200 OK.
+   - Test readiness probe: `curl.exe -i http://localhost:8080/readyz` -> harus 200 OK dengan status "ready" untuk database, redis, dan docker.
+4. **Prometheus Metrics Scrape**:
+   - Test metrics probe: `curl.exe -i http://localhost:8080/metrics` -> harus mengembalikan format ekspos Prometheus dengan metrik `http_requests_total`, `db_pool_active_connections`, dll.
+5. **Rate Limiter Test**:
+   - Jalankan loop 105 request ke endpoint publik dalam 1 menit: request ke-101 s/d 105 harus mengembalikan status `429 Too Many Requests`.
+6. **Graceful Shutdown**:
+   - Kirim sinyal interrupt (Ctrl+C / SIGINT) ke server backend.
+   - Verifikasi log mencatat pelepasan resource (closing DB pool, closing Redis) dan proses keluar dengan status 0 tanpa panic.

@@ -10,12 +10,19 @@ import (
 type contextKey string
 
 const (
+	// TraceIDKey context key
 	TraceIDKey contextKey = "trace_id"
-	SpanIDKey  contextKey = "span_id"
+	// SpanIDKey context key
+	SpanIDKey contextKey = "span_id"
 )
 
 // New creates slog logger
-func New(levelStr string, serviceName string) *slog.Logger {
+func New(levelStr string, serviceName ...string) *slog.Logger {
+	service := "cifo-backend"
+	if len(serviceName) > 0 && serviceName[0] != "" {
+		service = serviceName[0]
+	}
+
 	var level slog.Level
 	switch strings.ToUpper(levelStr) {
 	case "DEBUG":
@@ -33,7 +40,7 @@ func New(levelStr string, serviceName string) *slog.Logger {
 	}
 
 	handler := slog.NewJSONHandler(os.Stdout, opts).WithAttrs([]slog.Attr{
-		slog.String("service", serviceName),
+		slog.String("service", service),
 	})
 
 	return slog.New(handler)
@@ -53,4 +60,15 @@ func WithContext(ctx context.Context, l *slog.Logger) *slog.Logger {
 	}
 
 	return l
+}
+
+// ContextWithTrace injects trace ids
+func ContextWithTrace(ctx context.Context, traceID string, spanID string) context.Context {
+	if traceID != "" {
+		ctx = context.WithValue(ctx, TraceIDKey, traceID)
+	}
+	if spanID != "" {
+		ctx = context.WithValue(ctx, SpanIDKey, spanID)
+	}
+	return ctx
 }

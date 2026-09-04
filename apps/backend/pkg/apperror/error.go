@@ -56,17 +56,19 @@ var (
 	ErrNotFound     = New("NOT_FOUND", http.StatusNotFound, "resource not found", "Requested resource not found")
 	ErrBadRequest   = New("BAD_REQUEST", http.StatusBadRequest, "invalid request", "Invalid input parameters")
 	ErrInternal     = New("INTERNAL_ERROR", http.StatusInternalServerError, "internal server error", "An unexpected error occurred")
-	ErrRateLimited  = New("RATE_LIMITED", http.StatusTooManyRequests, "rate limit exceeded", "Too many requests, try again later")
+	ErrRateLimit    = New("RATE_LIMITED", http.StatusTooManyRequests, "rate limit exceeded", "Too many requests, try again later")
 )
 
-// FromError converts standard error
+// FromError converts error
 func FromError(err error) *AppError {
 	if err == nil {
 		return nil
 	}
+
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		return appErr
 	}
-	return Wrap(err, "INTERNAL_ERROR", http.StatusInternalServerError, err.Error(), "Internal server error")
+
+	return Wrap(err, "INTERNAL_ERROR", http.StatusInternalServerError, err.Error(), "An unexpected error occurred")
 }

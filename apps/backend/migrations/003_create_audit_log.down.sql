@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS ai_action_audit_log CASCADE;
+DROP TABLE IF EXISTS audit_log CASCADE;

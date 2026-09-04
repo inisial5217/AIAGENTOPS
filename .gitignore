@@ -52,3 +52,4 @@ Thumbs.db
 # K3d / Local cluster data
 .k3d/
 kubeconfig
+scratch/

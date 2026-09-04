@@ -3,6 +3,7 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/cifo-monitoring/backend/pkg/apperror"
 	"github.com/labstack/echo/v4"
@@ -14,7 +15,13 @@ func Recover(l *slog.Logger) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			defer func() {
 				if r := recover(); r != nil {
-					l.Error("panic recovered", slog.Any("error", r))
+					stack := string(debug.Stack())
+					if l != nil {
+						l.Error("panic recovered",
+							slog.Any("error", r),
+							slog.String("stack", stack),
+						)
+					}
 					_ = c.JSON(http.StatusInternalServerError, apperror.ErrInternal)
 				}
 			}()

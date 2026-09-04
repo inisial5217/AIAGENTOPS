@@ -25,10 +25,16 @@ echo "==> Creating argocd namespace..."
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> Installing ArgoCD into cluster..."
-if [ -f "../argocd/install.yaml" ]; then
-    kubectl apply -n argocd -f ../argocd/install.yaml
+if [ -f "../argocd/crds.yaml" ] && [ -f "../argocd/components.yaml" ]; then
+    echo "Applying ArgoCD CRDs (server-side)..."
+    kubectl apply --validate=false --server-side=true --force-conflicts -n argocd -f ../argocd/crds.yaml
+    sleep 3
+    echo "Applying ArgoCD Components..."
+    kubectl apply --validate=false -n argocd -f ../argocd/components.yaml
+elif [ -f "../argocd/install.yaml" ]; then
+    kubectl apply --validate=false --server-side=true --force-conflicts -n argocd -f ../argocd/install.yaml
 else
-    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.4/manifests/install.yaml
+    kubectl apply --validate=false -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.4/manifests/install.yaml
 fi
 
 echo "==> Waiting for ArgoCD Server to be Available..."
