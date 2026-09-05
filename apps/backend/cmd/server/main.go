@@ -16,6 +16,7 @@ import (
 	"github.com/cifo-monitoring/backend/internal/handler"
 	"github.com/cifo-monitoring/backend/internal/middleware"
 	"github.com/cifo-monitoring/backend/internal/repository"
+	"github.com/cifo-monitoring/backend/internal/service"
 	"github.com/cifo-monitoring/backend/pkg/logger"
 	"github.com/cifo-monitoring/backend/pkg/validator"
 	"github.com/labstack/echo/v4"
@@ -73,11 +74,19 @@ func main() {
 	e.HidePort = true
 	e.Validator = validator.New()
 
-	// init metrics collector
-	metrics := handler.NewMetrics(dbPool)
+	// init repositories
+	userRepo := repository.NewUserRepository(dbPool)
+	auditRepo := repository.NewAuditRepository(dbPool)
 
-	// init rate limiter
+	// init auth service & jwks cache
+	jwksCache := service.NewJWKSCache(cfg.KeycloakJWKSURL, 1*time.Hour)
+	authService := service.NewAuthService(cfg, userRepo, auditRepo, redisClient, jwksCache, appLogger)
+
+	// init handlers
+	healthHandler := handler.NewHealthHandler(dbPool, redisClient, cfg.DockerHost)
+	metrics := handler.NewMetrics(dbPool)
 	rateLimiter := middleware.NewRateLimiter(redisClient, appLogger)
+	authHandler := handler.NewAuthHandler(authService, userRepo, auditRepo)
 
 	// register global middleware
 	e.Use(middleware.RequestLogger(appLogger))
@@ -85,13 +94,23 @@ func main() {
 	e.Use(middleware.CORS(cfg.AllowedOrigins))
 	e.Use(metrics.Middleware())
 	e.Use(rateLimiter.LimitIP(100, time.Minute))
-	e.Use(middleware.AuthStub())
 
 	// register probe handlers
-	healthHandler := handler.NewHealthHandler(dbPool, redisClient, cfg.DockerHost)
 	e.GET("/healthz", healthHandler.Liveness)
 	e.GET("/readyz", healthHandler.Readiness)
 	e.GET("/metrics", metrics.Handler())
+
+	// register auth and admin routes
+	api := e.Group("/api/v1")
+	api.POST("/auth/login", authHandler.Login)
+
+	protectedAuth := api.Group("/auth", middleware.RequireAuth(authService))
+	protectedAuth.GET("/me", authHandler.Me)
+	protectedAuth.POST("/logout", authHandler.Logout)
+
+	admin := api.Group("/admin", middleware.RequireAuth(authService), middleware.RequireRole(authService, "admin"))
+	admin.GET("/users", authHandler.ListUsers)
+	admin.GET("/audit-logs", authHandler.ListAuditLogs)
 
 	// start http server
 	serverAddr := fmt.Sprintf(":%d", cfg.Port)

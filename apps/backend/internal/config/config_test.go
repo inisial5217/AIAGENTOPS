@@ -17,6 +17,9 @@ func TestConfigLoadDefaults(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, "development", cfg.Environment)
+	assert.Equal(t, "http://localhost:8180", cfg.KeycloakURL)
+	assert.Equal(t, "cifo", cfg.KeycloakRealm)
+	assert.Equal(t, "http://localhost:8180/realms/cifo", cfg.KeycloakIssuer)
 }
 
 func TestConfigMissingRequired(t *testing.T) {

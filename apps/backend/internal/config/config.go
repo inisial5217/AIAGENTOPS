@@ -22,6 +22,11 @@ type Config struct {
 	AIServiceURL   string
 	LogLevel       string
 	AllowedOrigins []string
+	KeycloakURL    string
+	KeycloakRealm  string
+	KeycloakIssuer string
+	KeycloakJWKSURL string
+	KeycloakClientID string
 }
 
 // Load loads env config
@@ -46,6 +51,11 @@ func Load() (*Config, error) {
 	aiServiceURL := getEnv("AI_SERVICE_URL", "localhost:50051")
 	logLevel := getEnv("LOG_LEVEL", "INFO")
 	originsStr := getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+	kcURL := getEnv("KEYCLOAK_URL", "http://localhost:8180")
+	kcRealm := getEnv("KEYCLOAK_REALM", "cifo")
+	kcIssuer := getEnv("KEYCLOAK_ISSUER", fmt.Sprintf("%s/realms/%s", kcURL, kcRealm))
+	kcJWKS := getEnv("KEYCLOAK_JWKS_URL", fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs", kcURL, kcRealm))
+	kcClientID := getEnv("KEYCLOAK_CLIENT_ID", "cifo-frontend")
 
 	// validate required fields
 	if strings.TrimSpace(dsn) == "" {
@@ -63,18 +73,23 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:           port,
-		Environment:    env,
-		DatabaseDSN:    dsn,
-		RedisAddr:      redisAddr,
-		RedisPass:      redisPass,
-		DockerHost:     dockerHost,
-		ArgoCDURL:      argocdURL,
-		ArgoCDToken:    argocdToken,
-		TelegramToken:  telegramToken,
-		AIServiceURL:   aiServiceURL,
-		LogLevel:       logLevel,
-		AllowedOrigins: origins,
+		Port:             port,
+		Environment:      env,
+		DatabaseDSN:      dsn,
+		RedisAddr:        redisAddr,
+		RedisPass:        redisPass,
+		DockerHost:       dockerHost,
+		ArgoCDURL:        argocdURL,
+		ArgoCDToken:      argocdToken,
+		TelegramToken:    telegramToken,
+		AIServiceURL:     aiServiceURL,
+		LogLevel:         logLevel,
+		AllowedOrigins:   origins,
+		KeycloakURL:      kcURL,
+		KeycloakRealm:    kcRealm,
+		KeycloakIssuer:   kcIssuer,
+		KeycloakJWKSURL:  kcJWKS,
+		KeycloakClientID: kcClientID,
 	}, nil
 }
 

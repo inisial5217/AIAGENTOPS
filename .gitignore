@@ -53,3 +53,4 @@ Thumbs.db
 .k3d/
 kubeconfig
 scratch/
+.cache/

@@ -567,13 +567,13 @@ Implementasi `/apps/backend/internal/handler/auth_handler.go`:
 - Setiap akses endpoint dengan role yang tidak cukup: catat (action=access_denied)
 
 ### Kriteria Penerimaan Fase 3:
-- [ ] Keycloak berjalan dan realm cifo terkonfigurasi
-- [ ] Request tanpa JWT token ke protected endpoint mendapat 401
-- [ ] Request dengan JWT token valid mendapat respons yang benar
-- [ ] Viewer tidak bisa mengakses endpoint Admin (mendapat 403)
-- [ ] User otomatis dibuat di tabel users saat login pertama
-- [ ] Auth events tercatat di tabel audit_log
-- [ ] JWKS cache bekerja (tidak fetch ke Keycloak setiap request)
+- [x] Keycloak berjalan dan realm cifo terkonfigurasi
+- [x] Request tanpa JWT token ke protected endpoint mendapat 401
+- [x] Request dengan JWT token valid mendapat respons yang benar
+- [x] Viewer tidak bisa mengakses endpoint Admin (mendapat 403)
+- [x] User otomatis dibuat di tabel users saat login pertama
+- [x] Auth events tercatat di tabel audit_log
+- [x] JWKS cache bekerja (tidak fetch ke Keycloak setiap request)
 
 ---
 

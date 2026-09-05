@@ -1,0 +1,117 @@
+{
+  "id": "cifo",
+  "realm": "cifo",
+  "displayName": "CIFO Monitoring & AIOps Platform",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrator role with full access"
+      },
+      {
+        "name": "devops",
+        "description": "DevOps role with operations access"
+      },
+      {
+        "name": "viewer",
+        "description": "Viewer role with read-only access"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "cifo-frontend",
+      "name": "CIFO Frontend Web App",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "http://localhost:3000",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "+"
+      ],
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "cifo-backend",
+      "name": "CIFO Backend API",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@cifo.local",
+      "email": "admin@cifo.local",
+      "firstName": "Admin",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
+    },
+    {
+      "username": "devops@cifo.local",
+      "email": "devops@cifo.local",
+      "firstName": "DevOps",
+      "lastName": "Engineer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devops123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "devops"
+      ]
+    },
+    {
+      "username": "viewer@cifo.local",
+      "email": "viewer@cifo.local",
+      "firstName": "Auditor",
+      "lastName": "Viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "viewer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "viewer"
+      ]
+    }
+  ]
+}
