@@ -667,16 +667,16 @@ Buat `/apps/frontend/Dockerfile`:
 - Non-root user, expose port 3000, healthcheck
 
 ### Kriteria Penerimaan Fase 4:
-- [ ] `npm run dev` menampilkan halaman login
-- [ ] Login via Keycloak berhasil dan redirect ke dashboard
-- [ ] Sidebar navigasi berfungsi (highlight active, collapse/expand)
-- [ ] Header menampilkan user info dan notification bell
-- [ ] Dark mode aktif sebagai default, toggle ke light mode berfungsi
-- [ ] Dashboard monitoring menampilkan layout grid dengan skeleton loading
-- [ ] Logout menghapus token dan redirect ke login
-- [ ] API client menambahkan token ke setiap request
-- [ ] Error 401 memicu redirect ke login
-- [ ] Docker build berhasil dan image berjalan
+- [x] `npm run dev` menampilkan halaman login
+- [x] Login via Keycloak berhasil dan redirect ke dashboard
+- [x] Sidebar navigasi berfungsi (highlight active, collapse/expand)
+- [x] Header menampilkan user info dan notification bell
+- [x] Dark mode aktif sebagai default, toggle ke light mode berfungsi
+- [x] Dashboard monitoring menampilkan layout grid dengan skeleton loading
+- [x] Logout menghapus token dan redirect ke login
+- [x] API client menambahkan token ke setiap request
+- [x] Error 401 memicu redirect ke login
+- [x] Docker build berhasil dan image berjalan
 
 ---
 

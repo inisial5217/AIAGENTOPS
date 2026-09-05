@@ -4,6 +4,7 @@
   --bg-secondary: #111827;
   --bg-tertiary: #1F2937;
   --bg-card: #131C2E;
+  --bg-card-hover: #172338;
   --bg-hover: #1E293B;
 
   --text-primary: #F9FAFB;
@@ -21,6 +22,9 @@
   --accent-hover: #33EBFF;
   --accent-active: #00B8CC;
 
+  --accent-pink: #FF2E93;
+  --accent-pink-glow: rgba(255, 46, 147, 0.25);
+
   --status-success: #00E676;
   --status-success-glow: rgba(0, 230, 118, 0.2);
   --status-warning: #FFB300;
@@ -28,6 +32,7 @@
   --status-error: #FF3B57;
   --status-error-glow: rgba(255, 59, 87, 0.25);
   --status-critical: #FF1744;
+  --status-critical-glow: rgba(255, 23, 68, 0.3);
   --status-info: #2979FF;
 
   --radius-sm: 4px;
@@ -37,6 +42,16 @@
 
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", Fira Code, Consolas, Courier New, monospace;
+
+  /* Aliases */
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-card: var(--bg-card);
+  --color-border: var(--border-default);
+  --color-accent: var(--accent-default);
+  --color-success: var(--status-success);
+  --color-warning: var(--status-warning);
+  --color-error: var(--status-error);
 }
 
 [data-theme="light"] {
@@ -44,6 +59,7 @@
   --bg-secondary: #FFFFFF;
   --bg-tertiary: #F1F5F9;
   --bg-card: #FFFFFF;
+  --bg-card-hover: #F8FAFC;
   --bg-hover: #E2E8F0;
 
   --text-primary: #0F172A;
@@ -60,6 +76,9 @@
   --accent-glow: rgba(0, 153, 184, 0.2);
   --accent-hover: #00B8CC;
   --accent-active: #007A94;
+
+  --accent-pink: #D81B60;
+  --accent-pink-glow: rgba(216, 27, 96, 0.2);
 
   --status-success: #10B981;
   --status-warning: #F59E0B;

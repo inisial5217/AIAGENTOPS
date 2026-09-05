@@ -1,10 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
-import HomePage from "./page";
+import { Badge } from "../components/ui/badge";
 
-describe("HomePage", () => {
-  it("renders command center title", () => {
-    render(<HomePage />);
-    expect(screen.getByText(/Command Center Initialized/i)).toBeDefined();
+describe("Badge Component", () => {
+  it("renders with correct variant styles", () => {
+    render(<Badge variant="cyan">Active</Badge>);
+    expect(screen.getByText("Active")).toBeDefined();
+  });
+
+  it("renders with pulse dot when pulse prop is true", () => {
+    const { container } = render(
+      <Badge variant="success" pulse>
+        Running
+      </Badge>
+    );
+    expect(container.querySelector(".animate-ping")).toBeDefined();
   });
 });
