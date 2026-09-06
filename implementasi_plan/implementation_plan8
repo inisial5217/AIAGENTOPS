@@ -1,0 +1,206 @@
+# Implementasi Fase 8: Alerting & Incident Management
+
+## Ringkasan Tujuan
+Fase 8 mengimplementasikan sistem manajemen insiden dan alerting menyeluruh yang menghubungkan deteksi anomali infrastruktur (Prometheus Alertmanager, Docker, Kubernetes) dengan penanganan insiden manusia dan respons otomatis:
+1. **Alertmanager Webhook Receiver**: Menerima payload alert standar Prometheus (`firing` / `resolved`), membuat insiden baru atau memperbarui status insiden yang sudah ada.
+2. **Incident Lifecycle Management**: Mengelola siklus hidup insiden secara lengkap: `Open` -> `Acknowledged` -> `Resolved` -> `Closed` dengan pencatatan timestamp, penanggung jawab (actor), dan jejak audit `audit_log`.
+3. **Telegram Bot Alerting**: Mengirimkan notifikasi Markdown bersih (tanpa emoji, sesuai standar panduan proyek) ke grup/channel Telegram dengan fitur **Alert Batching** (menggabungkan alert jika > 3 alert dalam jendela 2 menit untuk mencegah alert storm) dan **Redis Retry Queue** saat terjadi gangguan jaringan.
+4. **Incident Escalation Background Job**: Memeriksa insiden aktif dengan status `open` yang tidak di-acknowledge dalam kurun waktu 15 menit, lalu mengirimkan notifikasi eskalasi `[ESCALATED]` ke Telegram dan in-app alert.
+5. **Notification Service & In-App Alerts**: Menyiarkan notifikasi insiden baru dan eskalasi secara real-time ke WebSocket channel `notifications` dan menyimpannya ke riwayat tabel database `notifications`.
+6. **Frontend Incident Management Page (`/incidents`)**: Dashboard insiden enterprise dengan KPI counters, filter status dan keparahan (severity), tabel responsif dengan aksi cepat (Acknowledge, Resolve, Close) berbasis peran RBAC (`devops`, `admin`), modal detail dengan timeline visual dan tautan resource terkait, serta pembaruan real-time via WebSocket.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Token & Chat ID Telegram Bot**:
+> Sistem akan menggunakan environment variable `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID`. Jika token tidak disetel atau nilainya dummy pada lingkungan pengujian lokal, `TelegramClient` akan beroperasi dalam *graceful fallback mode* (mencatat payload ke logger dan log database tanpa menggagalkan proses penanganan insiden).
+
+> [!NOTE]
+> **Otorisasi Berbasis Peran (RBAC)**:
+> - `Viewer`: Hanya dapat melihat daftar dan detail insiden (read-only).
+> - `DevOps`: Dapat melakukan `Acknowledge` dan `Resolve` insiden.
+> - `Admin`: Dapat melakukan `Acknowledge`, `Resolve`, dan `Close` insiden secara permanen.
+
+---
+
+## Open Questions
+
+Tidak ada pertanyaan terbuka. Seluruh kebutuhan telah didefinisikan secara eksplisit pada [`arsitektur_diskusi/arsitektur_sistem.md`](file:///d:/agent%20v2/arsitektur_diskusi/arsitektur_sistem.md) dan [`arsitektur_diskusi/plan.md` Baris 928-1014](file:///d:/agent%20v2/arsitektur_diskusi/plan.md#L928-L1014).
+
+---
+
+## Proposed Changes
+
+### 1. Database Schema & Migration Layer
+
+#### [NEW] [`apps/backend/migrations/007_create_notifications.up.sql`](file:///d:/agent%20v2/apps/backend/migrations/007_create_notifications.up.sql)
+- Membuat tabel `notifications` untuk persistensi riwayat notifikasi (`id`, `incident_id`, `channel`, `recipient`, `title`, `message`, `severity`, `status`, `error_message`, `created_at`).
+- Menambahkan kolom `closed_by UUID REFERENCES users(id)` dan `closed_at TIMESTAMPTZ` pada tabel `incidents`.
+- Menambahkan indeks performa untuk pencarian insiden aktif dan eskalasi.
+
+#### [NEW] [`apps/backend/migrations/007_create_notifications.down.sql`](file:///d:/agent%20v2/apps/backend/migrations/007_create_notifications.down.sql)
+- Rollback migration untuk tabel `notifications` dan kolom `closed_by`/`closed_at`.
+
+---
+
+### 2. Domain Models & Repositories
+
+#### [NEW] [`apps/backend/internal/model/incident.go`](file:///d:/agent%20v2/apps/backend/internal/model/incident.go)
+- Struktur data domain:
+  - `Incident`: Entity database dengan seluruh field timestamp dan actor ID.
+  - `IncidentSummary`: DTO untuk list view dengan relasi nama pengguna (`AcknowledgedByName`, `ResolvedByName`, `ClosedByName`).
+  - `IncidentFilter`: Parameter query filter (`status`, `severity`, `source`, `search`, `page`, `limit`).
+  - `IncidentStats`: Agregasi ringkasan (`total`, `open`, `acknowledged`, `resolved`, `closed`, `critical_count`).
+  - `AlertmanagerWebhookPayload`: Struct parsing standar webhook Prometheus Alertmanager (`version`, `status`, `alerts` array, `labels`, `annotations`).
+  - `NotificationRecord`: Entity penyimpanan riwayat notifikasi.
+
+#### [NEW] [`apps/backend/internal/repository/incident_repository.go`](file:///d:/agent%20v2/apps/backend/internal/repository/incident_repository.go)
+- Interface `IncidentRepository` menggunakan connection pool `pgx/v5`:
+  - `Create(ctx, incident) error`
+  - `GetByID(ctx, id) (*model.Incident, error)`
+  - `List(ctx, filter) ([]*model.IncidentSummary, int, error)`
+  - `GetStats(ctx) (*model.IncidentStats, error)`
+  - `FindOpenByAlertAndResource(ctx, alertName, resourceID) (*model.Incident, error)`
+  - `UpdateStatus(ctx, id, status, actorID) error`
+  - `GetUnacknowledgedOlderThan(ctx, duration) ([]*model.Incident, error)`
+  - `SaveNotification(ctx, notification) error`
+
+---
+
+### 3. Telegram Integration & Batching / Retry Queue
+
+#### [NEW] [`apps/backend/internal/integration/telegram_client.go`](file:///d:/agent%20v2/apps/backend/internal/integration/telegram_client.go)
+- Client HTTP berbasis `net/http` yang mengirim pesan ke Telegram Bot API (`https://api.telegram.org/bot<token>/sendMessage`).
+- Rate limiting internal: batas maksimal 30 pesan per menit.
+- Graceful error handling saat token kosong atau network timeout.
+
+#### [NEW] [`apps/backend/internal/service/telegram_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/telegram_service.go)
+- Formatter pesan Markdown standar tanpa emoji:
+  ```text
+  [CRITICAL] ContainerOOMKilled
+  Resource: payment-gateway (Docker)
+  Time: 2026-09-06 15:30:00 UTC
+  Description: Container killed due to OOM
+  Action Required: Acknowledge in dashboard
+  ```
+- **Alert Batching**: Jendela deteksi 2 menit berbasis Redis. Jika > 3 alert masuk dalam jendela waktu tersebut, pesan individual ditahan dan digantikan oleh pesan ringkasan (`[SUMMARY] N Alerts Detected`).
+- **Redis Retry Queue**: Jika pengiriman ke Telegram gagal, pesan dimasukkan ke antrean Redis `cifo:telegram:retry_queue` dan diproses ulang oleh worker.
+
+---
+
+### 4. Notification Service, Incident Service & Escalation
+
+#### [NEW] [`apps/backend/internal/service/notification_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/notification_service.go)
+- Interface `NotificationService`:
+  - `Notify(ctx, incident, isEscalation)`:
+    - Memicu pengiriman pesan Telegram via `TelegramService` (asinkron).
+    - Mem-broadcast in-app alert via `wsHub.Broadcast(ws.TopicNotifications, ...)` untuk toast real-time di frontend.
+    - Mencatat histori ke tabel `notifications`.
+
+#### [NEW] [`apps/backend/internal/service/incident_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/incident_service.go)
+- Interface `IncidentService`:
+  - `ProcessAlertmanagerWebhook(ctx, payload)`: Memproses alert `firing` (buat/update insiden) dan `resolved` (resolve insiden otomatis), memicu notifikasi.
+  - `CreateIncident(ctx, req)`: Pembuatan insiden manual atau otomatis.
+  - `ListIncidents(ctx, filter)`: Pengambilan daftar berpaginasi.
+  - `GetIncident(ctx, id)`: Detail insiden lengkap.
+  - `GetIncidentStats(ctx)`: Statistik metrik insiden untuk kartu KPI.
+  - `AcknowledgeIncident(ctx, id, userID, ip)`: Ubah status ke `acknowledged`, catat ke `audit_log`.
+  - `ResolveIncident(ctx, id, userID, ip)`: Ubah status ke `resolved`, catat ke `audit_log`.
+  - `CloseIncident(ctx, id, userID, ip)`: Ubah status ke `closed`, catat ke `audit_log`.
+  - `CheckEscalations(ctx)`: Menemukan insiden `open` > 15 menit, mengirimkan notifikasi `[ESCALATED]`, dan mencatat eskalasi.
+
+---
+
+### 5. HTTP Handlers & Routing
+
+#### [NEW] [`apps/backend/internal/handler/incident_handler.go`](file:///d:/agent%20v2/apps/backend/internal/handler/incident_handler.go)
+- Endpoints Echo HTTP:
+  - `POST /api/v1/webhooks/alertmanager`: Webhook receiver dari Prometheus Alertmanager.
+  - `GET /api/v1/incidents`: Daftar insiden (filter, sort, paginasi).
+  - `GET /api/v1/incidents/stats`: Metrik KPI insiden.
+  - `GET /api/v1/incidents/:id`: Detail insiden tertentu.
+  - `POST /api/v1/incidents/:id/acknowledge`: Memerlukan role `devops` atau `admin`.
+  - `POST /api/v1/incidents/:id/resolve`: Memerlukan role `devops` atau `admin`.
+  - `POST /api/v1/incidents/:id/close`: Memerlukan role `admin`.
+
+#### [MODIFY] [`apps/backend/cmd/server/main.go`](file:///d:/agent%20v2/apps/backend/cmd/server/main.go)
+- Inisialisasi `incidentRepo`, `telegramClient`, `telegramService`, `notificationService`, dan `incidentService`.
+- Pendaftaran rute webhook dan protected incident endpoints.
+- Peluncuran background ticker untuk eskalasi insiden (> 15 menit) dan pemrosesan retry queue Telegram.
+
+#### [MODIFY] [`apps/backend/internal/config/config.go`](file:///d:/agent%20v2/apps/backend/internal/config/config.go)
+- Penambahan konfigurasi `TelegramChatID` dari environment variable `TELEGRAM_CHAT_ID`.
+
+---
+
+### 6. Frontend Incidents Management Page & Integration
+
+#### [NEW] [`apps/frontend/src/types/incident.ts`](file:///d:/agent%20v2/apps/frontend/src/types/incident.ts)
+- Definisi tipe TypeScript: `Incident`, `IncidentStatus`, `IncidentSeverity`, `IncidentFilter`, `IncidentStats`, `IncidentSummary`.
+
+#### [NEW] [`apps/frontend/src/services/incident-service.ts`](file:///d:/agent%20v2/apps/frontend/src/services/incident-service.ts)
+- Service client API untuk integrasi ke backend (`listIncidents`, `getIncident`, `getIncidentStats`, `acknowledgeIncident`, `resolveIncident`, `closeIncident`).
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/incidents/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/incidents/page.tsx)
+- Halaman UI Incidents Management:
+  - 5 Stat Cards: Total Incidents, Open (dengan status dot merah berkedip), Acknowledged, Resolved, Critical.
+  - Filter Bar: Pencarian teks, filter tab status (`All`, `Open`, `Acknowledged`, `Resolved`, `Closed`), filter dropdown keparahan (`Critical`, `Warning`, `Info`).
+  - Tabel Data Insiden: Penampilan informasi ringkas, badge semantik, info actor, dan tombol aksi langsung per baris.
+  - Modal Detail Insiden:
+    - Header detail dengan badge keparahan dan status.
+    - Komponen visual Timeline Siklus Hidup: `Created` -> `Acknowledged` -> `Resolved` -> `Closed` dengan tanggal dan actor.
+    - Detail alert, namespace, anotasi, dan tautan resource terkait.
+    - Kartu AI RCA (Root Cause Analysis) placeholder untuk Fase 9.
+    - Aksi Acknowledge/Resolve/Close dengan konfirmasi interaktif.
+  - Reaktivitas Real-time: Integrasi WebSocket hook untuk auto-refresh data saat ada alert baru yang masuk.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Backend Go Unit Tests**:
+   - `apps/backend/internal/service/incident_service_test.go`:
+     - Test pemrosesan webhook Alertmanager (`firing` -> insiden baru dibuat, `resolved` -> status insiden ter-resolve).
+     - Test lifecycle status transitions (`Open` -> `Acknowledged` -> `Resolved` -> `Closed`).
+     - Test role authorization checks dan audit logging.
+     - Test escalation logic untuk insiden terbuka > 15 menit.
+   - `apps/backend/internal/service/telegram_service_test.go`:
+     - Test pemformatan pesan Markdown tanpa emoji.
+     - Test deteksi batching (> 3 alert dalam 2 menit menghasilkan ringkasan).
+   - `apps/backend/internal/handler/incident_handler_test.go`:
+     - Test endpoint webhook, list, get, dan aksi lifecycle.
+   - Perintah verifikasi:
+     ```powershell
+     cd "d:\agent v2\apps\backend"
+     go test ./... -v
+     ```
+2. **Frontend Vitest Unit Tests**:
+   - `apps/frontend/src/services/incident-service.test.ts`: Uji pemanggilan API dan mapping data response.
+   - `apps/frontend/src/app/(dashboard)/incidents/page.test.tsx`: Uji rendering stat cards, filter status, dan interaksi modal.
+   - Perintah verifikasi:
+     ```powershell
+     cd "d:\agent v2\apps\frontend"
+     npm test
+     ```
+3. **Next.js Production Build**:
+   - Verifikasi kompilasi TypeScript dan SSR static generation rute `/incidents`:
+     ```powershell
+     cd "d:\agent v2\apps\frontend"
+     npm run build
+     ```
+
+### Manual & End-to-End Verification
+1. Jalankan skrip integrasi `scripts/test-phase8-alerts.ps1`:
+   - Kirim webhook simulasi firing alert ke `POST /api/v1/webhooks/alertmanager`.
+   - Verifikasi insiden muncul di database dan terkirim via WebSocket.
+   - Lakukan `Acknowledge` via API dengan user DevOps, verifikasi status berubah dan tercatat di `audit_log`.
+   - Lakukan `Resolve` via API, verifikasi status berubah.
+   - Lakukan `Close` via API dengan user Admin, verifikasi insiden tertutup.
+2. Verifikasi Browser UI:
+   - Akses `http://localhost:3001/incidents`.
+   - Verifikasi stat cards menampilkan angka nyata.
+   - Buka modal detail insiden, uji tombol aksi dan periksa visualisasi timeline.
+   - Tangkap screenshot dan rekam video interaksi browser untuk bukti walkthrough.

@@ -7,6 +7,7 @@ import {
   Activity,
   Layers,
   Container,
+  GitPullRequest,
   AlertTriangle,
   Settings,
   ChevronDown,
@@ -135,10 +136,7 @@ export function Sidebar() {
             <div className="ml-7 pl-2 border-l border-[var(--border-subtle)] space-y-1 mt-1">
               {[
                 { name: "Cluster Overview", href: "/kubernetes" },
-                { name: "Workloads & Pods", href: "/kubernetes/workloads" },
-                { name: "ArgoCD / GitOps", href: "/kubernetes/argocd" },
-                { name: "Network & Ingress", href: "/kubernetes/network" },
-                { name: "Chaos Lab", href: "/kubernetes/chaos" },
+                { name: "ArgoCD / GitOps", href: "/argocd" },
               ].map((sub) => {
                 const active = pathname === sub.href;
                 return (
@@ -159,6 +157,25 @@ export function Sidebar() {
             </div>
           )}
         </div>
+
+        {/* ArgoCD GitOps Root Link */}
+        <Link
+          href="/argocd"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] transition-all select-none ${
+            isRouteActive("/argocd")
+              ? "bg-cyan-500/10 text-[var(--accent-default)] border border-cyan-500/30 font-semibold shadow-sm shadow-[var(--accent-glow)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+          }`}
+          title="ArgoCD GitOps"
+        >
+          <GitPullRequest className="w-4 h-4 shrink-0" />
+          {!isCollapsed && (
+            <span className="flex-1 uppercase tracking-wider text-[11px]">
+              {isRouteActive("/argocd") && <span className="mr-1.5">•</span>}
+              ArgoCD GitOps
+            </span>
+          )}
+        </Link>
 
         {/* Docker Accordion */}
         <div className="pt-1">

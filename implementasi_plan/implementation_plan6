@@ -1,0 +1,174 @@
+# Rencana Implementasi Fase 6: Monitoring Kubernetes & Integrasi ArgoCD
+
+Platform CIFO Monitoring membutuhkan modul pemantauan orkestrasi kontainer tingkat enterprise: **Kubernetes (K3d cluster)** dan **ArgoCD (GitOps synchronization)**. 
+Fase 6 mengimplementasikan integrasi mendalam dari cluster lokal nyata `cifo-dev`, mencakup pemantauan Pods, Deployments, Nodes, Services, Application Sync & Health status, serta kemampuan aksi terkontrol (Restart/Scale Deployment, Sync ArgoCD App) dengan audit trail dan RBAC ketat.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Akses Kluster & Sumber Data Nyata (Zero Mock Data)**:
+> - Backend Go akan terhubung langsung ke Kubernetes API Server di `https://127.0.0.1:6443` menggunakan `client-go` resmi.
+> - ArgoCD Applications akan diakses melalui Custom Resource Definition `argoproj.io/v1alpha1` dan/atau REST endpoint port `8443`.
+> - Sample applications (`sample-nginx`, `sample-httpbin`) dari `infrastructure/local-testbed/argocd/sample-apps/` akan di-apply ke cluster agar terdapat beban kerja nyata yang dipantau.
+
+> [!TIP]
+> **Kontrol Akses Tulis (Write Operations)**:
+> Sesuai standar arsitektur di `arsitektur_sistem.md`:
+> - Operasi `restart` dan `scale` deployment serta `sync` ArgoCD app hanya dapat dieksekusi oleh role **DevOps** atau **Admin**.
+> - Seluruh aksi tulis otomatis dicatat ke tabel database `audit_log`.
+
+---
+
+## Proposed Changes
+
+### Backend Go Layer (Layanan Inti Kubernetes & ArgoCD)
+
+#### [NEW] [`apps/backend/internal/integration/k8s_client.go`](file:///d:/agent%20v2/apps/backend/internal/integration/k8s_client.go)
+- Inisialisasi Kubernetes Clientset menggunakan `k8s.io/client-go/kubernetes`.
+- Dukungan deteksi otomatis: Kubeconfig lokal (`~/.kube/config` / `KUBECONFIG` env) dengan fallback in-cluster config.
+- Metode inti:
+  - `ListPods(ctx, namespace, statusFilter)`: Daftar pod dengan status, restart count, node, dan IP.
+  - `GetPod(ctx, namespace, name)`: Detail spesifik pod beserta events dan conditions.
+  - `GetPodLogs(ctx, namespace, name, container, tailLines)`: Mengambil stream teks log pod.
+  - `ListDeployments(ctx, namespace)`: Daftar deployment, replika ready/available, dan selector.
+  - `GetDeployment(ctx, namespace, name)`: Detail deployment dan strategi rollout.
+  - `RestartDeployment(ctx, namespace, name)`: Trigger rollout restart via annotation patch `kubectl.kubernetes.io/restartedAt`.
+  - `ScaleDeployment(ctx, namespace, name, replicas)`: Scale sub-resource replicas deployment.
+  - `ListNodes(ctx)`: Daftar node, role, status Ready/NotReady, kapasitas CPU/RAM, dan versi Kubernetes.
+  - `GetNode(ctx, name)`: Detail spesifik node.
+  - `ListServices(ctx, namespace)`: Daftar service, type (ClusterIP, NodePort, LoadBalancer), port mappings.
+  - `ListEvents(ctx, namespace)`: Daftar event kluster terbaru.
+
+#### [NEW] [`apps/backend/internal/integration/argocd_client.go`](file:///d:/agent%20v2/apps/backend/internal/integration/argocd_client.go)
+- Mengakses ArgoCD Applications via Dynamic K8s Client (`argoproj.io/v1alpha1`) dan/atau REST API token.
+- Metode inti:
+  - `ListApplications(ctx)`: Daftar semua aplikasi ArgoCD, sync status, dan health status.
+  - `GetApplication(ctx, name)`: Detail lengkap aplikasi, target git revision, repo URL, path, dan sync policy.
+  - `GetApplicationHistory(ctx, name)`: Riwayat revisi deployment (timeline hash, deployed at).
+  - `SyncApplication(ctx, name, prune)`: Menjalankan sinkronisasi GitOps aplikasi ArgoCD.
+
+#### [NEW] [`apps/backend/internal/model/kubernetes.go`](file:///d:/agent%20v2/apps/backend/internal/model/kubernetes.go)
+- Struct model domain untuk K8s: `PodSummary`, `PodDetail`, `DeploymentSummary`, `DeploymentDetail`, `NodeSummary`, `ServiceSummary`, `K8sEventSummary`.
+
+#### [NEW] [`apps/backend/internal/model/argocd.go`](file:///d:/agent%20v2/apps/backend/internal/model/argocd.go)
+- Struct model domain untuk ArgoCD: `ArgoApplicationSummary`, `ArgoApplicationDetail`, `ArgoDeploymentRevision`, `ArgoSyncRequest`.
+
+#### [NEW] [`apps/backend/internal/service/kubernetes_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/kubernetes_service.go)
+- Business logic service untuk Kubernetes.
+- Transformasi tipe raw K8s SDK ke `model.PodSummary`, `model.DeploymentSummary`, `model.NodeSummary`.
+- Integrasi audit logging `auditRepo.Create()` untuk aksi restart dan scale.
+- Caching Redis untuk daftar node dan services (TTL 30 detik).
+
+#### [NEW] [`apps/backend/internal/service/argocd_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/argocd_service.go)
+- Business logic service untuk ArgoCD.
+- Agregasi status kesehatan kluster (Healthy, Degraded, Progressing, Missing).
+- Integrasi audit logging `auditRepo.Create()` untuk aksi trigger sync.
+- Caching Redis untuk status aplikasi (TTL 15 detik).
+
+#### [MODIFY] [`apps/backend/internal/service/monitoring_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/monitoring_service.go)
+- Menggabungkan data replika nyata dari Kubernetes Service ke dalam KPI `DashboardStats`:
+  - `TotalReplicas`: Agregasi ready replicas dari K8s deployments + running Docker containers.
+  - `ActiveIncidents`: Menghitung pod crash (`CrashLoopBackOff`, `Error`, `Failed`) + kontainer `dead`/`restarting`.
+
+#### [NEW] [`apps/backend/internal/handler/kubernetes_handler.go`](file:///d:/agent%20v2/apps/backend/internal/handler/kubernetes_handler.go)
+- REST API endpoint routes:
+  - `GET /api/v1/kubernetes/pods`
+  - `GET /api/v1/kubernetes/pods/:namespace/:name`
+  - `GET /api/v1/kubernetes/pods/:namespace/:name/logs`
+  - `GET /api/v1/kubernetes/deployments`
+  - `GET /api/v1/kubernetes/deployments/:namespace/:name`
+  - `POST /api/v1/kubernetes/deployments/:namespace/:name/restart` (RBAC: devops, admin)
+  - `PUT /api/v1/kubernetes/deployments/:namespace/:name/scale` (RBAC: devops, admin)
+  - `GET /api/v1/kubernetes/nodes`
+  - `GET /api/v1/kubernetes/services`
+
+#### [NEW] [`apps/backend/internal/handler/argocd_handler.go`](file:///d:/agent%20v2/apps/backend/internal/handler/argocd_handler.go)
+- REST API endpoint routes:
+  - `GET /api/v1/argocd/applications`
+  - `GET /api/v1/argocd/applications/:name`
+  - `GET /api/v1/argocd/applications/:name/history`
+  - `POST /api/v1/argocd/applications/:name/sync` (RBAC: devops, admin)
+
+#### [MODIFY] [`apps/backend/cmd/server/main.go`](file:///d:/agent%20v2/apps/backend/cmd/server/main.go)
+- Inisialisasi K8s client dan ArgoCD client.
+- Dependency injection ke Service dan Handler layer.
+- Registrasi routes baru ke Echo router.
+
+---
+
+### Frontend Next.js Layer (Antarmuka Pengguna Kubernetes & ArgoCD)
+
+#### [NEW] [`apps/frontend/src/services/kubernetes-service.ts`](file:///d:/agent%20v2/apps/frontend/src/services/kubernetes-service.ts)
+- Axios API client wrapper untuk seluruh endpoint Kubernetes (`getPods`, `getPodLogs`, `getDeployments`, `restartDeployment`, `scaleDeployment`, `getNodes`, `getServices`).
+
+#### [NEW] [`apps/frontend/src/services/argocd-service.ts`](file:///d:/agent%20v2/apps/frontend/src/services/argocd-service.ts)
+- Axios API client wrapper untuk endpoint ArgoCD (`getApplications`, `getApplication`, `getApplicationHistory`, `syncApplication`).
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/kubernetes/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/kubernetes/page.tsx)
+- Halaman utama Kubernetes Management:
+  - Sub-navigation tabs: **Overview**, **Pods**, **Deployments**, **Nodes**, **Services**.
+  - **Pods Table**: Name, Namespace, Status Badge (Running=emerald, Pending=amber, CrashLoop=red), Restarts, Node, IP, Age, View Logs action.
+  - **Deployments Table**: Name, Namespace, Replicas (Ready/Desired), Available, Age, Action buttons (Restart rollout, Scale modal).
+  - **Nodes Grid**: Card untuk setiap node K3d (Control-plane, Agents) dengan bar utilisasi CPU/Memory dan status Kubelet Ready.
+  - Filter namespace dinamis dan search input instan.
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/argocd/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/argocd/page.tsx)
+- Halaman utama ArgoCD GitOps Management:
+  - Application cards dengan dual badges: Sync Status (`Synced`, `OutOfSync`) & Health Status (`Healthy`, `Degraded`, `Progressing`).
+  - Info repo source, branch/revision, destination server & namespace.
+  - Modal detail aplikasi: resources tree, deployment history timeline, dan tombol manual Sync dengan prompt konfirmasi.
+
+#### [NEW] [`apps/frontend/src/components/widgets/argocd-status-widget.tsx`](file:///d:/agent%20v2/apps/frontend/src/components/widgets/argocd-status-widget.tsx)
+- Widget status ArgoCD di dashboard utama monitoring (`/monitoring`), menampilkan ringkasan aplikasi GitOps, status sinkronisasi, dan tombol aksi cepat.
+
+#### [MODIFY] [`apps/frontend/src/components/layout/sidebar.tsx`](file:///d:/agent%20v2/apps/frontend/src/components/layout/sidebar.tsx)
+- Mengaktifkan item menu **Kubernetes** (`/kubernetes`) dan **ArgoCD** (`/argocd`) di sidebar navigation agar dapat diakses langsung.
+
+#### [MODIFY] [`apps/frontend/src/app/(dashboard)/monitoring/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/monitoring/page.tsx)
+- Menyematkan widget ArgoCD status di tier dashboard monitoring untuk visibilitas GitOps end-to-end.
+
+---
+
+### Local Testbed (Sample Workloads)
+
+#### [APPLY] Sample Apps ke K3d Cluster:
+- `kubectl apply -f infrastructure/local-testbed/argocd/sample-apps/sample-nginx.yaml`
+- `kubectl apply -f infrastructure/local-testbed/argocd/sample-apps/sample-httpbin.yaml`
+- `kubectl apply -f infrastructure/local-testbed/argocd/sample-apps/argocd-app-nginx.yaml`
+- `kubectl apply -f infrastructure/local-testbed/argocd/sample-apps/argocd-app-httpbin.yaml`
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Backend Unit Tests**:
+   - `go test ./internal/service -run "TestKubernetes" -v`
+   - `go test ./internal/service -run "TestArgoCD" -v`
+   - `go test ./...` (memastikan 100% lulus tanpa regresi)
+2. **Frontend Unit Tests**:
+   - `npm test` di `apps/frontend` (Vitest test suite)
+3. **Production Build Verification**:
+   - `npm run build` di `apps/frontend` (Next.js Turbopack typecheck & static page generation)
+   - `scripts/build-linux.ps1` (Cross-compile Linux binary)
+
+### Manual & Runtime Verification
+1. **Live K3d Data Inspection**:
+   - Verifikasi endpoint `GET /api/v1/kubernetes/pods` mengembalikan pods nyata (`k3s`, `argocd`, `sample-nginx`, `sample-httpbin`).
+   - Verifikasi endpoint `GET /api/v1/kubernetes/nodes` mengembalikan 3 node nyata (`k3d-cifo-dev-server-0`, `agent-0`, `agent-1`).
+2. **ArgoCD Live API Verification**:
+   - Verifikasi endpoint `GET /api/v1/argocd/applications` menampilkan aplikasi `sample-nginx-app` dan `sample-httpbin-app`.
+3. **Write Operations & RBAC Verification**:
+   - Uji scale deployment via `PUT /api/v1/kubernetes/deployments/default/sample-nginx/scale` (ubah replika dari 2 -> 3).
+   - Uji restart deployment via `POST /api/v1/kubernetes/deployments/default/sample-nginx/restart`.
+   - Uji trigger sync ArgoCD via `POST /api/v1/argocd/applications/sample-nginx-app/sync`.
+   - Verifikasi entri baru di tabel `audit_log`.
+4. **UI Walkthrough**:
+   - Buka browser ke `http://localhost:3001/kubernetes` dan `http://localhost:3001/argocd`.
+   - Pastikan visual tab, badge warna, dan modal detail berjalan mulus dengan dark mode.
+
+---
+
+### Dokumentasi Penyelesaian
+Setelah seluruh verifikasi lulus, dokumentasi komprehensif penyelesaian Fase 6 akan dibuat dan disimpan di:
+📂 `implementasi_plan/f6.md`

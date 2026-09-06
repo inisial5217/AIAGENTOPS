@@ -69,6 +69,34 @@ func NewAuthService(
 
 // ValidateToken parses and validates token
 func (s *AuthService) ValidateToken(ctx context.Context, tokenString string) (*AuthClaims, error) {
+	// check development mock token fallback
+	if s.cfg.Environment == "development" && strings.HasPrefix(tokenString, "dev-token-") {
+		role := strings.TrimPrefix(tokenString, "dev-token-")
+		var roles []string
+		switch role {
+		case "admin":
+			roles = []string{"admin", "devops", "viewer"}
+		case "devops":
+			roles = []string{"devops", "viewer"}
+		default:
+			roles = []string{"viewer"}
+		}
+		return &AuthClaims{
+			Email:             role + "@cifo.local",
+			Name:              strings.ToUpper(string(role[0])) + role[1:] + " User",
+			PreferredUsername: role,
+			RealmAccess: RealmRoles{
+				Roles: roles,
+			},
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   "dev-" + role + "-id",
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				Issuer:    s.cfg.KeycloakIssuer,
+			},
+		}, nil
+	}
+
 	// check redis blacklist
 	blacklisted, err := s.IsTokenBlacklisted(ctx, tokenString)
 	if err != nil {
@@ -159,6 +187,9 @@ func (s *AuthService) BlacklistToken(ctx context.Context, tokenString string, ex
 
 // IsTokenBlacklisted checks token revocation
 func (s *AuthService) IsTokenBlacklisted(ctx context.Context, tokenString string) (bool, error) {
+	if s.redis == nil {
+		return false, nil
+	}
 	hash := sha256.Sum256([]byte(tokenString))
 	key := fmt.Sprintf("jwt:blacklist:%s", hex.EncodeToString(hash[:]))
 
@@ -187,6 +218,11 @@ func (s *AuthService) DirectLogin(ctx context.Context, username, password string
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if s.cfg.Environment == "development" {
+			if token := s.devLoginFallback(username, password); token != nil {
+				return token, nil
+			}
+		}
 		return nil, fmt.Errorf("execute login request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -202,6 +238,11 @@ func (s *AuthService) DirectLogin(ctx context.Context, username, password string
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if s.cfg.Environment == "development" {
+			if token := s.devLoginFallback(username, password); token != nil {
+				return token, nil
+			}
+		}
 		desc := "authentication failed"
 		if errDesc, ok := res["error_description"].(string); ok {
 			desc = errDesc
@@ -210,6 +251,34 @@ func (s *AuthService) DirectLogin(ctx context.Context, username, password string
 	}
 
 	return res, nil
+}
+
+// devLoginFallback provides resilient fallback in development mode
+func (s *AuthService) devLoginFallback(username, password string) map[string]interface{} {
+	validCredentials := map[string]struct {
+		pass string
+		role string
+	}{
+		"admin@cifo.local":  {pass: "admin123", role: "admin"},
+		"devops@cifo.local": {pass: "devops123", role: "devops"},
+		"viewer@cifo.local": {pass: "viewer123", role: "viewer"},
+		"admin":             {pass: "admin123", role: "admin"},
+		"devops":            {pass: "devops123", role: "devops"},
+		"viewer":            {pass: "viewer123", role: "viewer"},
+	}
+
+	cred, ok := validCredentials[username]
+	if !ok || cred.pass != password {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"access_token":       "dev-token-" + cred.role,
+		"token_type":         "Bearer",
+		"expires_in":         86400,
+		"refresh_expires_in": 86400,
+		"scope":              "openid profile email",
+	}
 }
 
 // LogAuditEvent records security audit log

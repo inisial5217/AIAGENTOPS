@@ -106,9 +106,23 @@ export function Modal({
   );
 }
 
+export function DialogFooter({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={clsx("flex items-center justify-end gap-2 mt-4", className)}
+      {...props}
+    />
+  );
+}
+
 export const ModalContent = DialogContent;
 export const ModalHeader = DialogHeader;
 export const ModalTitle = DialogTitle;
 export const ModalDescription = DialogDescription;
+export const ModalFooter = DialogFooter;
 export const ModalClose = DialogClose;
 export const ModalTrigger = DialogTrigger;
+

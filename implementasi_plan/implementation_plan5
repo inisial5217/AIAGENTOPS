@@ -1,0 +1,147 @@
+# Rencana Implementasi Fase 5: Monitoring Docker
+
+Berdasarkan analisis menyeluruh terhadap [`arsitektur_diskusi/arsitektur_sistem.md`](file:///d:/agent%20v2/arsitektur_diskusi/arsitektur_sistem.md), [`arsitektur_diskusi/plan.md`](file:///d:/agent%20v2/arsitektur_diskusi/plan.md#L683), [`arsitektur_diskusi/agent_instructions.md`](file:///d:/agent%20v2/arsitektur_diskusi/agent_instructions.md), dan referensi visual di [`referensi tampilan/`](file:///d:/agent%20v2/referensi%20tampilan/), dokumen ini menguraikan rencana teknis implementasi **Fase 5: Monitoring Docker**.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Prinsip Zero Mock Data**: Semua data kontainer, utilisasi CPU/RAM, log, image, volume, dan network pada Fase 5 ini bersumber **100% dari Docker Engine lokal yang aktif** (`github.com/docker/docker/client`). Tidak ada hardcoded mock array pada API response.
+
+> [!NOTE]
+> **RBAC & Keamanan Mutasi**:
+> - Panggilan `POST /api/v1/docker/containers/:id/restart` hanya diizinkan untuk peran `devops` dan `admin`.
+> - Panggilan `POST /api/v1/docker/containers/:id/stop` hanya diizinkan untuk peran `admin`.
+> - Setiap aksi restart dan stop dicatat otomatis ke tabel `audit_log` PostgreSQL.
+
+---
+
+## Proposed Changes
+
+### 1. Backend Go Layer (Docker Integration & Services)
+
+#### [MODIFY] [`apps/backend/go.mod`](file:///d:/agent%20v2/apps/backend/go.mod)
+- Menambahkan dependensi resmi Docker Go SDK:
+  - `github.com/docker/docker v27.1.1+incompatible`
+  - `github.com/docker/go-connections`
+  - `github.com/opencontainers/image-spec`
+
+#### [NEW] [`apps/backend/internal/model/docker.go`](file:///d:/agent%20v2/apps/backend/internal/model/docker.go)
+- Struct model internal untuk Docker:
+  - `ContainerSummary`: ID, Names, Image, State, Status, Created, Ports, Labels.
+  - `ContainerDetail`: ID, Name, Image, State, Status, Created, RestartCount, Platform, Mounts, NetworkSettings, Config (Env sanitized).
+  - `ContainerStats`: CPUPercentage, MemoryUsageBytes, MemoryLimitBytes, MemoryPercentage, NetworkRxBytes, NetworkTxBytes, BlockReadBytes, BlockWriteBytes, PidsCurrent.
+  - `DockerSystemInfo`: ContainersTotal, ContainersRunning, ContainersPaused, ContainersStopped, ImagesTotal, NCPU, TotalMemory, Driver, DockerVersion, KernelVersion, OperatingSystem.
+  - `DockerImageInfo`: ID, RepoTags, Size, Created.
+  - `DockerVolumeInfo`: Name, Driver, Scope, Mountpoint, Size.
+  - `DockerNetworkInfo`: ID, Name, Driver, Scope, Subnet, Gateway.
+
+#### [NEW] [`apps/backend/internal/integration/docker_client.go`](file:///d:/agent%20v2/apps/backend/internal/integration/docker_client.go)
+- Wrapper klien Docker Engine:
+  - Inisialisasi otomatis via `client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())` (kompatibel lintas platform Windows named pipe dan Linux Unix socket).
+  - Metode lengkap:
+    - `ListContainers(ctx, all bool)`
+    - `GetContainer(ctx, id string)`
+    - `GetContainerStats(ctx, id string)`
+    - `GetContainerLogs(ctx, id string, tail int)`
+    - `RestartContainer(ctx, id string)`
+    - `StopContainer(ctx, id string)`
+    - `ListImages(ctx)`
+    - `ListVolumes(ctx)`
+    - `ListNetworks(ctx)`
+    - `GetSystemInfo(ctx)`
+  - Error wrapping konsisten ke `apperror`.
+
+#### [NEW] [`apps/backend/internal/service/docker_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/docker_service.go)
+- Business service layer Docker:
+  - Transformasi raw Docker SDK types ke `model.ContainerSummary`, `model.ContainerStats`, dll.
+  - Agregasi statistik: total, running, paused, stopped containers.
+  - Caching Redis 60 detik untuk images dan volumes (`cifo:docker:images`, `cifo:docker:volumes`).
+  - Audit logging terintegrasi via `auditRepo.Create()` untuk aksi restart dan stop.
+
+#### [NEW] [`apps/backend/internal/service/monitoring_service.go`](file:///d:/agent%20v2/apps/backend/internal/service/monitoring_service.go)
+- Layanan agregasi telemetri dashboard:
+  - `GetDashboardStats(ctx)`: Menghitung metrik Tier 1 nyata (Total Containers, Running, Stopped, Overall RAM % dari Host System Info, Active Incidents).
+  - `GetTimeSeriesMetrics(ctx, metricType, timeRange)`: Mengambil data deret waktu CPU/RAM dari host & container.
+
+#### [NEW] [`apps/backend/internal/handler/docker_handler.go`](file:///d:/agent%20v2/apps/backend/internal/handler/docker_handler.go)
+- Handler HTTP Echo v4:
+  - `GET /api/v1/docker/containers` (query: `status=running|stopped|all`)
+  - `GET /api/v1/docker/containers/:id`
+  - `GET /api/v1/docker/containers/:id/stats`
+  - `GET /api/v1/docker/containers/:id/logs` (query: `tail=200`)
+  - `POST /api/v1/docker/containers/:id/restart` (Role: `devops` | `admin`)
+  - `POST /api/v1/docker/containers/:id/stop` (Role: `admin`)
+  - `GET /api/v1/docker/images`
+  - `GET /api/v1/docker/volumes`
+  - `GET /api/v1/docker/networks`
+  - `GET /api/v1/docker/system`
+
+#### [NEW] [`apps/backend/internal/handler/monitoring_handler.go`](file:///d:/agent%20v2/apps/backend/internal/handler/monitoring_handler.go)
+- Handler HTTP Echo v4:
+  - `GET /api/v1/monitoring/stats` (Agregat KPI Tier 1)
+  - `GET /api/v1/monitoring/metrics/cpu` (Time-series CPU)
+  - `GET /api/v1/monitoring/metrics/memory` (Time-series RAM)
+  - `GET /api/v1/monitoring/metrics/network` (Time-series Network)
+
+#### [MODIFY] [`apps/backend/cmd/server/main.go`](file:///d:/agent%20v2/apps/backend/cmd/server/main.go)
+- Mendaftarkan rute Docker dan Monitoring ke grup `/api/v1` dengan proteksi `RequireAuth` dan `RequireRole`.
+
+---
+
+### 2. Frontend Next.js Layer (Docker Views & Real-time Telemetry)
+
+#### [NEW] [`apps/frontend/src/types/docker.ts`](file:///d:/agent%20v2/apps/frontend/src/types/docker.ts)
+- Definisi antarmuka TypeScript untuk Container, Stats, Images, Volumes, System Info.
+
+#### [NEW] [`apps/frontend/src/services/docker-service.ts`](file:///d:/agent%20v2/apps/frontend/src/services/docker-service.ts)
+- Klien API frontend untuk berinteraksi dengan endpoint backend `/api/v1/docker/*` dan `/api/v1/monitoring/*`.
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/docker/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/docker/page.tsx)
+- Halaman utama manajemen Docker:
+  - Search & Status Filter (`All`, `Running`, `Stopped`).
+  - Tabel kontainer responsif (Name, Image, State Badge, Ports, Uptime, Actions).
+  - Modal / Drawer Detail Kontainer:
+    - Tab 1: **Info** (ID, Command, Created, Platform, IP Address).
+    - Tab 2: **Live Stats** (Live CPU %, Memory MB / %, PIDs, Network I/O).
+    - Tab 3: **Console Logs** (Terminal viewer dengan auto-scroll dan download).
+    - Tab 4: **Actions** (Tombol Restart & Stop dengan konfirmasi dialog dan feedback toast).
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/docker/images/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/docker/images/page.tsx)
+- Halaman daftar Docker Images (RepoTags, Size, Created, Digest).
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/docker/volumes/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/docker/volumes/page.tsx)
+- Halaman daftar Docker Volumes (Volume Name, Driver, Mountpoint, Scope).
+
+#### [NEW] [`apps/frontend/src/app/(dashboard)/docker/networks/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/docker/networks/page.tsx)
+- Halaman daftar Docker Networks (Network Name, Driver, Subnet, Gateway).
+
+#### [MODIFY] [`apps/frontend/src/app/(dashboard)/monitoring/page.tsx`](file:///d:/agent%20v2/apps/frontend/src/app/(dashboard)/monitoring/page.tsx)
+- Menghubungkan 6 kartu KPI Tier 1 ke endpoint live `GET /api/v1/monitoring/stats` menggunakan TanStack React Query (refetch otomatis 15 detik).
+- Menghubungkan widget `HostResourceUsage` ke endpoint `GET /api/v1/monitoring/metrics/cpu`.
+- Menghubungkan widget `SystemEventLogs` untuk menampilkan log audit dan event kontainer nyata.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Go Unit & Integration Tests**:
+   - `go test -v ./internal/integration/...` (Pengujian Docker client terhadap Docker daemon lokal).
+   - `go test -v ./internal/service/...` (Pengujian DockerService agregasi & Redis cache).
+   - `go test -v ./internal/handler/...` (Pengujian DockerHandler & RBAC role restrictions).
+2. **Frontend Vitest Suite**:
+   - `npm test` di `apps/frontend` (Pengujian formatters, store, dan komponen Docker).
+3. **Next.js Production Build**:
+   - `npm run build` di `apps/frontend` (Memastikan TypeScript strict pass dengan 0 error).
+
+### Manual & End-to-End Verification
+1. **Live Container Listing**:
+   - Memastikan container lokal (`cifo-postgres`, `cifo-redis`, `cifo-keycloak`, `k3d-cifo-dev-server-0`) muncul pada tabel `/docker`.
+2. **Live Stats & Logs**:
+   - Membuka drawer detail container `cifo-postgres` dan melihat pembaruan CPU/RAM serta 200 baris log PostgreSQL terbaru.
+3. **Container Lifecycle Operation**:
+   - Menguji aksi restart kontainer uji coba dan memverifikasi kemunculan catatan mutasi di tabel `audit_log` PostgreSQL.
+4. **Browser Subagent Visual Verification**:
+   - Menjalankan Browser Subagent untuk menangkap screenshot halaman `/docker`, modal detail stats/logs, dan dashboard monitoring yang tersinkronisasi.

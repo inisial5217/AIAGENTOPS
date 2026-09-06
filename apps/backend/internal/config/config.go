@@ -18,14 +18,15 @@ type Config struct {
 	DockerHost     string
 	ArgoCDURL      string
 	ArgoCDToken    string
-	TelegramToken  string
-	AIServiceURL   string
-	LogLevel       string
-	AllowedOrigins []string
-	KeycloakURL    string
-	KeycloakRealm  string
-	KeycloakIssuer string
-	KeycloakJWKSURL string
+	TelegramToken    string
+	TelegramChatID   string
+	AIServiceURL     string
+	LogLevel         string
+	AllowedOrigins   []string
+	KeycloakURL      string
+	KeycloakRealm    string
+	KeycloakIssuer   string
+	KeycloakJWKSURL  string
 	KeycloakClientID string
 }
 
@@ -48,9 +49,10 @@ func Load() (*Config, error) {
 	argocdURL := getEnv("ARGOCD_URL", "https://localhost:8443")
 	argocdToken := getEnv("ARGOCD_TOKEN", "")
 	telegramToken := getEnv("TELEGRAM_BOT_TOKEN", "")
+	telegramChatID := getEnv("TELEGRAM_CHAT_ID", "")
 	aiServiceURL := getEnv("AI_SERVICE_URL", "localhost:50051")
 	logLevel := getEnv("LOG_LEVEL", "INFO")
-	originsStr := getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+	originsStr := getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173")
 	kcURL := getEnv("KEYCLOAK_URL", "http://localhost:8180")
 	kcRealm := getEnv("KEYCLOAK_REALM", "cifo")
 	kcIssuer := getEnv("KEYCLOAK_ISSUER", fmt.Sprintf("%s/realms/%s", kcURL, kcRealm))
@@ -82,6 +84,7 @@ func Load() (*Config, error) {
 		ArgoCDURL:        argocdURL,
 		ArgoCDToken:      argocdToken,
 		TelegramToken:    telegramToken,
+		TelegramChatID:   telegramChatID,
 		AIServiceURL:     aiServiceURL,
 		LogLevel:         logLevel,
 		AllowedOrigins:   origins,

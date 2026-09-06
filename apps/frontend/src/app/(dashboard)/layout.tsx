@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "../../components/layout/sidebar";
 import { Header } from "../../components/layout/header";
 import { Breadcrumb } from "../../components/layout/breadcrumb";
 import { useSidebarStore } from "../../store/sidebar-store";
+import { useAuthStore } from "../../lib/auth";
 import { ShieldCheck, Cpu } from "lucide-react";
 
 export default function DashboardLayout({
@@ -12,7 +14,21 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const { isCollapsed } = useSidebarStore();
+  const { token, user, initAuth } = useAuthStore();
+
+  React.useEffect(() => {
+    const storedToken =
+      typeof window !== "undefined"
+        ? localStorage.getItem("cifo_access_token")
+        : null;
+    if (!storedToken && !token) {
+      router.replace("/login");
+    } else if (storedToken && !user) {
+      initAuth();
+    }
+  }, [token, user, initAuth, router]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] flex">

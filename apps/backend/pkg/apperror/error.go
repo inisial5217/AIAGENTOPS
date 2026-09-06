@@ -49,6 +49,22 @@ func Wrap(err error, code string, status int, msg string, userMsg string) *AppEr
 	}
 }
 
+// NewInternal creates internal error
+func NewInternal(msg string) *AppError {
+	return New("INTERNAL_ERROR", http.StatusInternalServerError, msg, msg)
+}
+
+// NewNotFound creates not found error
+func NewNotFound(msg string) *AppError {
+	return New("NOT_FOUND", http.StatusNotFound, msg, msg)
+}
+
+// NewBadRequest creates bad request error
+func NewBadRequest(msg string) *AppError {
+	return New("BAD_REQUEST", http.StatusBadRequest, msg, msg)
+}
+
+
 // Predefined app errors
 var (
 	ErrUnauthorized = New("AUTH_UNAUTHORIZED", http.StatusUnauthorized, "unauthorized access", "Authentication required")

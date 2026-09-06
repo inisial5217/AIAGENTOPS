@@ -1,14 +1,13 @@
 import axios, { AxiosError } from "axios";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000,
+  timeout: 30000,
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -27,10 +26,7 @@ apiClient.interceptors.response.use(
     if (typeof window !== "undefined") {
       if (error.response?.status === 401) {
         localStorage.removeItem("cifo_access_token");
-        if (
-          !window.location.pathname.startsWith("/login") &&
-          window.location.pathname !== "/"
-        ) {
+        if (!window.location.pathname.startsWith("/login")) {
           window.location.href = "/login";
         }
       }

@@ -22,9 +22,9 @@ export default function LoginPage() {
   const { login, loginWithKeycloak, isLoading, error, isAuthenticated } =
     useAuth();
 
-  const [username, setUsername] = React.useState("admin");
-  const [password, setPassword] = React.useState("admin_password");
-  const [activeProfile, setActiveProfile] = React.useState<string | null>(null);
+  const [username, setUsername] = React.useState("admin@cifo.local");
+  const [password, setPassword] = React.useState("admin123");
+  const [activeProfile, setActiveProfile] = React.useState<string | null>("Admin");
 
   // If already authenticated, redirect to monitoring
   React.useEffect(() => {
@@ -93,10 +93,10 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() =>
-                handleDemoProfile("admin", "admin_password", "Admin")
+                handleDemoProfile("admin@cifo.local", "admin123", "Admin")
               }
               className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                username === "admin"
+                username === "admin@cifo.local"
                   ? "border-pink-500/50 bg-pink-500/10 text-pink-300 shadow-sm"
                   : "border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--border-default)]"
               }`}
@@ -110,10 +110,10 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() =>
-                handleDemoProfile("devops", "devops_password", "DevOps")
+                handleDemoProfile("devops@cifo.local", "devops123", "DevOps")
               }
               className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                username === "devops"
+                username === "devops@cifo.local"
                   ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
                   : "border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--border-default)]"
               }`}
@@ -127,10 +127,10 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() =>
-                handleDemoProfile("viewer", "viewer_password", "Viewer")
+                handleDemoProfile("viewer@cifo.local", "viewer123", "Viewer")
               }
               className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                username === "viewer"
+                username === "viewer@cifo.local"
                   ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300 shadow-sm"
                   : "border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--border-default)]"
               }`}
