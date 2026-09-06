@@ -1,9 +1,9 @@
-# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 9)
+# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 10)
 
 > **Dokumen Handoff untuk Agent AI Baru / Sesi Lanjutan**  
 > **Repository**: [https://github.com/inisial5217/AIAGENTOPS](https://github.com/inisial5217/AIAGENTOPS)  
 > **Tanggal Pembuatan**: 2026-09-07  
-> **Status Terkini**: **Fase 0 s.d. Fase 9 SELESAI 100% (Terverifikasi & Siap Menuju Fase 10)**  
+> **Status Terkini**: **Fase 0 s.d. Fase 10 SELESAI 100% (Terverifikasi & Siap Menuju Fase 11)**  
 > **Peran Wajib Agent**: Senior Principal Software Architect, Full-Stack Developer, DevOps & SRE Specialist, Senior QA Analyst, dan UI/UX Designer.
 
 ---
@@ -51,7 +51,8 @@ d:\agent v2\
 │   ├── f6.md                             # Dokumentasi Fase 6 (Kubernetes & ArgoCD)
 │   ├── f7.md                             # Dokumentasi Fase 7 (Real-Time & WebSocket)
 │   ├── f8.md                             # Dokumentasi Fase 8 (Alerting & Incident Management)
-│   └── f9.md                             # Dokumentasi Fase 9 (AI Service & Chat Agent)
+│   ├── f9.md                             # Dokumentasi Fase 9 (AI Service & Chat Agent)
+│   └── f10.md                            # Dokumentasi Fase 10 (Halaman Settings & Administrasi)
 ├── apps/
 │   ├── backend/                          # Backend API Engine (Go 1.24, Chi, pgxpool, go-redis)
 │   │   ├── cmd/server/main.go            # Entrypoint HTTP Server (:8080) & WS Hub
@@ -177,80 +178,103 @@ Semua kode telah diuji secara komprehensif tanpa toleransi error:
    - Status: **100% SUKSES (Turbopack, exit code 0)**, 13 static pages prerendered (`/`, `/monitoring`, `/docker`, `/docker/containers`, `/docker/images`, `/docker/networks`, `/docker/volumes`, `/kubernetes`, `/argocd`, `/incidents`, `/settings`, `/login`, `/_not-found`).
 4. **Verifikasi Integrasi Real Scripts**:
    - `scripts/test-phase8-alerts.ps1` -> 100% Lulus memvalidasi webhook firing, deduplikasi, acknowledge, resolve, close, auto-resolution resolved alert, dan pencatatan audit log di PostgreSQL.
+   - `scripts/test-phase9-ai.ps1` -> 100% Lulus memvalidasi microservice Python FastAPI, circuit breaker, tool calling, memory context, prompt injection sanitizer, AI Incident RCA, dan PostgreSQL usage tracking.
+   - `scripts/test-phase10-settings.ps1` -> 100% Lulus memvalidasi GET/PUT settings, test notification alert, list users, role change, deactivation/reactivation, self-protection guard, RBAC rejection (HTTP 403), dan pencatatan riwayat di tabel PostgreSQL `audit_log`.
 
 ---
 
-## 5. Menghadapi Fase 9: AI Service & Chat Agent (Briefing Arsitektur)
+## 5. Ringkasan Penyelesaian Fase 10: Halaman Settings & Administrasi
 
-> [!CAUTION]
-> **STATUS FASE 9**: **SELESAI 100% (Terverifikasi & Terdokumentasi di implementasi_plan/f9.md)**
-> - Python 3.12 AI Microservice FastAPI (`:8000`) dengan 13 tools (8 read, 5 write with human-in-the-loop approval), multi-provider (Gemini, OpenAI, Claude, Ollama, Mock), circuit breaker, dan security injection sanitizer.
-> - Go Backend Echo integration (`AIRepository`, `HTTPAIClient`, `AIService`, `AIHandler`) pada `/api/v1/ai/*` dan `/api/v1/incidents/:id/rca` dengan persistensi PostgreSQL `ai_sessions`, `ai_messages`, `ai_action_audit_log`, `ai_usage_tracking`, dan `incidents.rca_summary`.
-> - Frontend Next.js 16 floating AI Chat Drawer dengan model selector, tool approval card, serta tombol aktif AI RCA pada modal insiden di `/incidents`.
-> - Semua pengujian (Pytest 14/14, Go tests 100%, Vitest 60/60, PowerShell end-to-end 7/7) lulus tanpa kompromi.
+> [!IMPORTANT]
+> **STATUS FASE 10**: **SELESAI 100% (Terverifikasi & Terdokumentasi di implementasi_plan/f10.md)**
+> - **Database Layer**: Migrasi `008_create_system_settings.up.sql` berhasil memigrasikan tabel legacy key-value ke `system_settings_kv` secara aman dan membuat skema terstruktur `system_settings` dengan default seed records di PostgreSQL `cifo_db`.
+> - **Backend Go Layer (`apps/backend`)**:
+>   - Repository: `SettingsRepository` & `UserRepository` diperluas dengan `UpdateRole` dan `SetActive`.
+>   - Service: `SettingsService` dengan validasi peran (`admin`, `devops`, `viewer`), perlindungan mandiri akun admin (*self-deactivation prevention*), pengiriman verifikasi test alert Telegram, dan pencatatan otomatis ke tabel `audit_log`.
+>   - Handler & Routes: `/api/v1/settings/*` terstruktur dengan envelope `{ "data": ... }`, diproteksi JWT dan `RequireRole("admin")`.
+> - **Frontend Next.js 16 (`apps/frontend`)**:
+>   - Halaman `/settings` dengan desain Cyberpunk Glassmorphism menyediakan 5 tab interaktif:
+>     1. **General**: Nama platform, retensi metrik telemetri, refresh rate real-time, dan timestamp live.
+>     2. **Notifications**: Telegram Bot credentials (masked token dengan toggle show/hide), tombol uji coba "Test Notification Alert", email gateway, severity routing matrix, dan quiet hours scheduler.
+>     3. **AI Configuration**: Indikator status microservice AI Python live (`127.0.0.1:8000`), slider confidence threshold analisis (50% - 99%), dan toggle Autonomous Remediation Mode.
+>     4. **Users & RBAC**: Direktori pengguna real-time dari PostgreSQL, role selector dropdown (`admin`, `devops`, `viewer`), status badge, tombol aksi deaktivasi/reaktivasi, dan proteksi akun sendiri (`Self Protected`).
+>     5. **Security & Sessions**: Kebijakan timeout sesi, penegakan MFA Keycloak, dan visualisasi sesi aktif perangkat.
+> - **Pengujian & QA**:
+>   - Unit tests backend Go: 100% PASS (`internal/handler`, `internal/service`, `internal/middleware`, dll).
+>   - Unit tests frontend Vitest: 100% PASS (18 test suites, 72 unit tests lulus).
+>   - End-to-end integration test: `scripts/test-phase10-settings.ps1` lulus 100% menguji seluruh siklus CRUD, RBAC, dan audit trail di database.
+>   - Verifikasi visual: Browser subagent merekam interaksi kelima tab (`phase10_settings_verification_1788721457198.webp`).
 
 ---
 
-## 5. Persiapan Menuju Fase 10 (CI/CD Pipeline & GitOps Promotion)
+## 6. Persiapan Menuju Fase 11: Observability (Tracing & Logging)
 
 > **PENTING UNTUK AGENT SELANJUTNYA**:
-> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 10 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 10"*.
+> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 11 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 11"*.
 
-Ketika pengguna menginstruksikan untuk memulai Fase 10, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1127-1200+ dan `arsitektur_sistem.md`):
+Ketika pengguna menginstruksikan untuk memulai Fase 11, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1159-1220 dan `arsitektur_sistem.md`):
 
-### 5.1 Ruang Lingkup Fase 10
-1. **CI/CD Pipeline Engine**:
-   - Webhook penerimaan GitHub / Gitea commit event.
-   - Build automation runner dan lint/test validation.
-   - Integrasi container registry lokal atau build image.
-2. **GitOps Promotion**:
-   - Integrasi mendalam dengan ArgoCD Application Controller untuk promosi lingkungan (staging -> production).
-   - Sinkronisasi manifes Kubernetes terkelola otomatis via GitOps.
-   - Deteksi out-of-sync dan rollback otomatis jika health check pasca-deployment gagal.
-3. **Frontend Pipeline Dashboard**:
-   - Tampilan visual alur pipeline build, test, scan, dan promote.
-   - Diff view perubahan manifes GitOps sebelum sinkronisasi.
-4. **Zero Mock Data & Strict Standards**:
-   - Tetap pertahankan zero mock data, typed error handling, Go comments 1-4 kata, dan pengujian unit + integrasi menyeluruh.
+### 6.1 Ruang Lingkup Fase 11
+1. **OpenTelemetry di Backend Go (`apps/backend`)**:
+   - Pemasangan `go.opentelemetry.io/otel` dan eksporter Tempo / OTLP gRPC/HTTP.
+   - Inisialisasi tracer provider di `cmd/server/main.go`.
+   - Instrumentasi semua HTTP handler Echo via tracing middleware.
+   - Instrumentasi kueri PostgreSQL database (pgx tracing hooks).
+   - Propagasi trace context ke AI Service.
+2. **OpenTelemetry di Microservice AI Python (`apps/ai-service`)**:
+   - Pemasangan `opentelemetry-sdk` dan eksporter Tempo.
+   - Instrumentasi FastAPI middleware dan HTTP client.
+   - Propagasi context trace ke pemanggilan model LLM.
+3. **Log-Trace Correlation**:
+   - Pastikan setiap log entry terstruktur (slog di Go dan loguru/standard logging di Python) menyertakan `trace_id` dan `span_id`.
+   - Menghubungkan log view dan trace view di Grafana/Loki/Tempo.
+4. **Verifikasi End-to-End Observability**:
+   - Skrip pengujian otomatis untuk memicu request terdistribusi dan memvalidasi span trace di Tempo/Grafana.
 
 ---
 
-## 6. Panduan Menjalankan Sistem pada Komputer Baru
+## 7. Panduan Menjalankan Sistem pada Komputer Baru
 
 Jika repositori ini di-clone ke komputer baru:
 
-### 6.1 Prasyarat Lingkungan
+### 7.1 Prasyarat Lingkungan
 - Docker Desktop aktif (mendukung Windows Containers / WSL2 Engine).
 - Go versi 1.24 atau lebih baru.
 - Node.js versi 18 atau lebih baru (npm aktif).
 - Python versi 3.11 atau lebih baru (uv / pip).
 - K3d CLI untuk cluster Kubernetes lokal (`k3d cluster create cifo-dev`).
 
-### 6.2 Langkah Menjalankan
+### 7.2 Langkah Menjalankan
 1. **Menyalakan Testbed Docker Compose**:
    ```powershell
    cd "d:\agent v2\infrastructure\local-testbed"
    docker compose up -d
    ```
 2. **Memverifikasi Migrasi Basis Data**:
-   Database `cifo_db` telah siap dengan migrasi 001 s.d. 007 di folder `apps/backend/migrations`.
-3. **Menjalankan Backend Go**:
+   Database `cifo_db` telah siap dengan migrasi 001 s.d. 008 di folder `apps/backend/migrations`.
+3. **Menjalankan AI Microservice**:
+   ```powershell
+   cd "d:\agent v2\apps\ai-service"
+   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+4. **Menjalankan Backend Go**:
    ```powershell
    cd "d:\agent v2"
    powershell -ExecutionPolicy Bypass -File scripts\start-backend.ps1
    ```
    Backend akan mendengarkan pada `http://127.0.0.1:8080`.
-4. **Menjalankan Frontend Next.js**:
+5. **Menjalankan Frontend Next.js**:
    ```powershell
    cd "d:\agent v2\apps\frontend"
    npm install
    npm run dev
    ```
    Frontend akan dapat diakses pada `http://localhost:3001`.
-5. **Kredensial Default**:
+6. **Kredensial Default**:
    - Admin: `admin@cifo.local` / `Admin123!`
    - DevOps: `devops@cifo.local` / `DevOps123!`
    - Token Dev: `dev-token-admin`, `dev-token-devops`, `dev-token-viewer`
 
 ---
-*Dokumen ini merupakan checkpoint resmi penyelesaian Fase 8. Seluruh riwayat dan verifikasi tersimpan rapi dan dapat dipertanggungjawabkan.*
+*Dokumen ini merupakan checkpoint resmi penyelesaian Fase 10. Seluruh riwayat dan verifikasi tersimpan rapi dan dapat dipertanggungjawabkan.*
+

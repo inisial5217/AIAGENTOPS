@@ -18,6 +18,8 @@ type UserRepository interface {
 	FindByKeycloakID(ctx context.Context, keycloakID string) (*model.User, error)
 	UpsertKeycloakUser(ctx context.Context, user *model.User) (*model.User, error)
 	List(ctx context.Context, limit, offset int) ([]*model.User, int, error)
+	UpdateRole(ctx context.Context, id string, role string) (*model.User, error)
+	SetActive(ctx context.Context, id string, isActive bool) (*model.User, error)
 }
 
 // PostgresUserRepository pgx pool implementation
@@ -174,4 +176,46 @@ func (r *PostgresUserRepository) List(ctx context.Context, limit, offset int) ([
 	}
 
 	return users, total, nil
+}
+
+// UpdateRole updates user role
+func (r *PostgresUserRepository) UpdateRole(ctx context.Context, id string, role string) (*model.User, error) {
+	query := `
+		UPDATE users
+		SET role = $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING id, email, name, role, COALESCE(keycloak_id, ''), is_active, created_at, updated_at`
+
+	var u model.User
+	err := r.pool.QueryRow(ctx, query, role, id).Scan(
+		&u.ID, &u.Email, &u.Name, &u.Role, &u.KeycloakID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("update user role: %w", err)
+	}
+	return &u, nil
+}
+
+// SetActive updates user active status
+func (r *PostgresUserRepository) SetActive(ctx context.Context, id string, isActive bool) (*model.User, error) {
+	query := `
+		UPDATE users
+		SET is_active = $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING id, email, name, role, COALESCE(keycloak_id, ''), is_active, created_at, updated_at`
+
+	var u model.User
+	err := r.pool.QueryRow(ctx, query, isActive, id).Scan(
+		&u.ID, &u.Email, &u.Name, &u.Role, &u.KeycloakID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("set user active: %w", err)
+	}
+	return &u, nil
 }

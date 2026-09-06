@@ -165,6 +165,11 @@ func main() {
 	aiService := service.NewDefaultAIService(aiRepo, incidentRepo, aiClient, dockerService, k8sService, argoService)
 	aiHandler := handler.NewAIHandler(aiService)
 
+	// init settings engine
+	settingsRepo := repository.NewSettingsRepository(dbPool)
+	settingsService := service.NewSettingsService(settingsRepo, userRepo, auditRepo, telegramService, appLogger)
+	settingsHandler := handler.NewSettingsHandler(settingsService)
+
 	// register global middleware
 	e.Use(middleware.RequestLogger(appLogger))
 	e.Use(middleware.Recover(appLogger))
@@ -252,6 +257,19 @@ func main() {
 	aiGroup.POST("/tools/:id/approve", aiHandler.HandleApproveTool)
 	aiGroup.POST("/tools/:id/reject", aiHandler.HandleRejectTool)
 	aiGroup.GET("/usage", aiHandler.HandleGetUsage)
+
+	// register settings routes (admin only)
+	settingsGroup := api.Group("/settings", middleware.RequireAuth(authService), middleware.RequireRole(authService, "admin"))
+	settingsGroup.GET("", settingsHandler.GetSettings)
+	settingsGroup.PUT("", settingsHandler.UpdateSettings)
+	settingsGroup.POST("/notifications/test", settingsHandler.TestNotification)
+	settingsGroup.POST("/test-notification", settingsHandler.TestNotification)
+	settingsGroup.GET("/users", settingsHandler.ListUsers)
+	settingsGroup.PUT("/users/:id/role", settingsHandler.UpdateUserRole)
+	settingsGroup.DELETE("/users/:id", settingsHandler.DeactivateUser)
+	settingsGroup.POST("/users/:id/deactivate", settingsHandler.DeactivateUser)
+	settingsGroup.PUT("/users/:id/activate", settingsHandler.ReactivateUser)
+	settingsGroup.POST("/users/:id/reactivate", settingsHandler.ReactivateUser)
 
 	// start http server
 	serverAddr := fmt.Sprintf(":%d", cfg.Port)

@@ -38,6 +38,12 @@ func (m *mockUserRepo) UpsertKeycloakUser(ctx context.Context, user *model.User)
 func (m *mockUserRepo) List(ctx context.Context, limit, offset int) ([]*model.User, int, error) {
 	return nil, 0, nil
 }
+func (m *mockUserRepo) UpdateRole(ctx context.Context, id string, role string) (*model.User, error) {
+	return nil, nil
+}
+func (m *mockUserRepo) SetActive(ctx context.Context, id string, isActive bool) (*model.User, error) {
+	return nil, nil
+}
 
 func TestExtractRole(t *testing.T) {
 	svc := &AuthService{}
