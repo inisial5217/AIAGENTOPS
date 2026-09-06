@@ -159,6 +159,12 @@ func main() {
 	argoHandler := handler.NewArgoCDHandler(argoService)
 	incidentHandler := handler.NewIncidentHandler(incidentService)
 
+	// init ai engine
+	aiRepo := repository.NewPostgresAIRepository(dbPool)
+	aiClient := integration.NewHTTPAIClient(cfg.AIServiceURL)
+	aiService := service.NewDefaultAIService(aiRepo, incidentRepo, aiClient, dockerService, k8sService, argoService)
+	aiHandler := handler.NewAIHandler(aiService)
+
 	// register global middleware
 	e.Use(middleware.RequestLogger(appLogger))
 	e.Use(middleware.Recover(appLogger))
@@ -235,6 +241,17 @@ func main() {
 	incidentGroup.POST("/:id/acknowledge", incidentHandler.AcknowledgeIncident, middleware.RequireRole(authService, "devops"))
 	incidentGroup.POST("/:id/resolve", incidentHandler.ResolveIncident, middleware.RequireRole(authService, "devops"))
 	incidentGroup.POST("/:id/close", incidentHandler.CloseIncident, middleware.RequireRole(authService, "admin"))
+	incidentGroup.POST("/:id/rca", aiHandler.HandleGenerateRCA)
+
+	// register ai routes
+	aiGroup := api.Group("/ai", middleware.RequireAuth(authService))
+	aiGroup.GET("/models", aiHandler.HandleListModels)
+	aiGroup.POST("/chat", aiHandler.HandleChat)
+	aiGroup.GET("/sessions", aiHandler.HandleListSessions)
+	aiGroup.GET("/sessions/:id/messages", aiHandler.HandleGetSessionMessages)
+	aiGroup.POST("/tools/:id/approve", aiHandler.HandleApproveTool)
+	aiGroup.POST("/tools/:id/reject", aiHandler.HandleRejectTool)
+	aiGroup.GET("/usage", aiHandler.HandleGetUsage)
 
 	// start http server
 	serverAddr := fmt.Sprintf(":%d", cfg.Port)

@@ -64,6 +64,16 @@ func NewBadRequest(msg string) *AppError {
 	return New("BAD_REQUEST", http.StatusBadRequest, msg, msg)
 }
 
+// NewUnauthorized creates unauthorized error
+func NewUnauthorized(msg string) *AppError {
+	return New("UNAUTHORIZED", http.StatusUnauthorized, msg, msg)
+}
+
+// NewForbidden creates forbidden error
+func NewForbidden(msg string) *AppError {
+	return New("FORBIDDEN", http.StatusForbidden, msg, msg)
+}
+
 
 // Predefined app errors
 var (

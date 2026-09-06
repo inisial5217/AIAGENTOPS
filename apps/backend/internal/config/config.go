@@ -50,7 +50,7 @@ func Load() (*Config, error) {
 	argocdToken := getEnv("ARGOCD_TOKEN", "")
 	telegramToken := getEnv("TELEGRAM_BOT_TOKEN", "")
 	telegramChatID := getEnv("TELEGRAM_CHAT_ID", "")
-	aiServiceURL := getEnv("AI_SERVICE_URL", "localhost:50051")
+	aiServiceURL := getEnv("AI_SERVICE_URL", "http://localhost:8000")
 	logLevel := getEnv("LOG_LEVEL", "INFO")
 	originsStr := getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173")
 	kcURL := getEnv("KEYCLOAK_URL", "http://localhost:8180")

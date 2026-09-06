@@ -8,6 +8,7 @@ import { Breadcrumb } from "../../components/layout/breadcrumb";
 import { useSidebarStore } from "../../store/sidebar-store";
 import { useAuthStore } from "../../lib/auth";
 import { ShieldCheck, Cpu } from "lucide-react";
+import { ChatContainer } from "../../components/ai-chat/chat-container";
 
 export default function DashboardLayout({
   children,
@@ -66,6 +67,9 @@ export default function DashboardLayout({
 
         {/* Dynamic Page Content */}
         <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+
+        {/* Global Autonomous AI Assistant */}
+        <ChatContainer />
       </div>
     </div>
   );

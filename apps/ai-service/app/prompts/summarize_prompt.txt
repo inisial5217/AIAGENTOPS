@@ -1,0 +1,6 @@
+Summarize the key context, diagnostics performed, and conclusions from the preceding infrastructure troubleshooting conversation.
+Keep the summary under 150 words. Focus strictly on:
+1. Affected systems/resources discussed.
+2. Root causes identified or tested.
+3. Actions executed or pending user approval.
+4. Next unresolved diagnostic steps.

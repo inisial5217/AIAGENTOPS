@@ -25,7 +25,9 @@ import {
 import { useAuth } from "../../../hooks/use-auth";
 import { useWebSocket } from "../../../hooks/use-websocket";
 import { incidentService } from "../../../services/incident-service";
+import { aiService } from "../../../services/ai-service";
 import { Modal } from "../../../components/ui/modal";
+import { RCAResponse } from "../../../types/ai";
 import {
   IncidentSummary,
   IncidentDetail,
@@ -45,6 +47,23 @@ export default function IncidentsPage() {
   const [sourceFilter, setSourceFilter] = React.useState<string>("all");
   const [selectedIncidentId, setSelectedIncidentId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [isAnalyzingRCA, setIsAnalyzingRCA] = React.useState<boolean>(false);
+  const [rcaResult, setRcaResult] = React.useState<RCAResponse | null>(null);
+
+  const handleRunRCA = async (incidentId: string) => {
+    setIsAnalyzingRCA(true);
+    setActionError(null);
+    try {
+      const res = await aiService.generateIncidentRCA(incidentId);
+      setRcaResult(res);
+      queryClient.invalidateQueries({ queryKey: ["incident-detail", incidentId] });
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message || err?.message || "Failed to generate AI RCA");
+    } finally {
+      setIsAnalyzingRCA(false);
+    }
+  };
 
   // user role check
   const isDevOpsOrAdmin = user?.role === "devops" || user?.role === "admin";
@@ -755,21 +774,123 @@ export default function IncidentsPage() {
                 </div>
               </div>
 
-              {/* AI RCA Assistant Card (Phase 9 Integration Ready) */}
-              <div className="p-4 rounded-[var(--radius-lg)] bg-gradient-to-br from-pink-500/10 via-purple-500/5 to-cyan-500/10 border border-purple-500/30">
-                <div className="flex items-center gap-2 mb-2 text-purple-300">
-                  <Bot className="w-4 h-4 text-pink-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider font-mono">
-                    AI Root Cause Analysis (AIOps Agent)
-                  </span>
-                  <span className="ml-auto px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    Phase 9 Ready
-                  </span>
+              {/* AI RCA Assistant Card (Active Phase 9 Integration) */}
+              <div className="p-4 rounded-[var(--radius-lg)] bg-gradient-to-br from-indigo-950/30 via-purple-950/20 to-cyan-950/30 border border-purple-500/40 shadow-xl">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2 text-purple-300">
+                    <div className="h-6 w-6 rounded-md bg-purple-500/20 border border-purple-500/40 flex items-center justify-center">
+                      <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-wider font-mono">
+                      AI Root Cause Analysis (AIOps Agent)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {(selectedIncident.rca_summary || rcaResult) && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        {rcaResult?.confidence_score ? `${Math.round(rcaResult.confidence_score * 100)}% Conf.` : "Diagnosed"}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      id="run-ai-rca-btn"
+                      disabled={isAnalyzingRCA}
+                      onClick={() => handleRunRCA(selectedIncident.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-60 text-white text-xs font-medium shadow-md shadow-purple-950/40 transition-all cursor-pointer"
+                    >
+                      {isAnalyzingRCA ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>AI Analyzing...</span>
+                        </>
+                      ) : selectedIncident.rca_summary || rcaResult ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Re-Analyze RCA</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="w-3.5 h-3.5" />
+                          <span>Run AI RCA Analysis</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  {selectedIncident.rca_summary ||
-                    "Automated AI log diagnosis, remediation recommendation, and blast radius correlation will be active upon Phase 9 enablement. The incident payload is already structured with proper resource pointers."}
-                </p>
+
+                {/* RCA Content */}
+                {isAnalyzingRCA ? (
+                  <div className="py-6 flex flex-col items-center justify-center text-center space-y-2">
+                    <div className="relative">
+                      <div className="w-8 h-8 rounded-full border-2 border-purple-500/30 border-t-purple-400 animate-spin" />
+                      <Sparkles className="w-4 h-4 text-pink-400 absolute inset-0 m-auto" />
+                    </div>
+                    <p className="text-xs text-purple-200 font-medium">
+                      AI Agent is diagnosing container logs, resource anomalies, and generating remediation steps...
+                    </p>
+                  </div>
+                ) : selectedIncident.rca_summary || rcaResult ? (
+                  <div className="space-y-3 text-xs">
+                    {/* Summary box */}
+                    <div className="p-3 rounded-lg bg-slate-950/70 border border-purple-500/30 text-slate-200 font-mono text-[11px] leading-relaxed">
+                      <span className="text-purple-300 font-bold uppercase block mb-1">
+                        Executive Summary:
+                      </span>
+                      {rcaResult?.rca_summary || selectedIncident.rca_summary}
+                    </div>
+
+                    {/* Root Cause & Impact if available */}
+                    {rcaResult?.root_cause && (
+                      <div className="p-3 rounded-lg bg-amber-950/20 border border-amber-600/30 text-amber-200">
+                        <span className="font-bold uppercase text-[10px] tracking-wider block mb-1">
+                          Identified Root Cause:
+                        </span>
+                        <p className="text-slate-200 leading-relaxed">{rcaResult.root_cause}</p>
+                      </div>
+                    )}
+
+                    {/* Recommended Actions */}
+                    {rcaResult?.recommended_actions && rcaResult.recommended_actions.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Recommended Remediation:
+                        </span>
+                        <ul className="space-y-1 pl-1">
+                          {rcaResult.recommended_actions.map((act, i) => (
+                            <li key={i} className="flex items-start gap-1.5 text-slate-200 text-xs">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                              <span>{act}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Prevention Steps */}
+                    {rcaResult?.prevention_steps && rcaResult.prevention_steps.length > 0 && (
+                      <div className="space-y-1 pt-1 border-t border-slate-800">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Prevention & Hardening:
+                        </span>
+                        <ul className="space-y-1 pl-1">
+                          {rcaResult.prevention_steps.map((stp, i) => (
+                            <li key={i} className="flex items-start gap-1.5 text-slate-300 text-xs">
+                              <ShieldAlert className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                              <span>{stp}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                    Trigger automated AI log diagnosis and root cause analysis. The CIFO DevOps agent
+                    will correlate cluster telemetry, identify failure triggers, and recommend verified remediation steps.
+                  </p>
+                )}
               </div>
 
               {/* Notification Audit History */}

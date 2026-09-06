@@ -1,9 +1,9 @@
-# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 8)
+# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 9)
 
 > **Dokumen Handoff untuk Agent AI Baru / Sesi Lanjutan**  
 > **Repository**: [https://github.com/inisial5217/AIAGENTOPS](https://github.com/inisial5217/AIAGENTOPS)  
 > **Tanggal Pembuatan**: 2026-09-07  
-> **Status Terkini**: **Fase 0 s.d. Fase 8 SELESAI 100% (Terverifikasi & Siap Menuju Fase 9)**  
+> **Status Terkini**: **Fase 0 s.d. Fase 9 SELESAI 100% (Terverifikasi & Siap Menuju Fase 10)**  
 > **Peran Wajib Agent**: Senior Principal Software Architect, Full-Stack Developer, DevOps & SRE Specialist, Senior QA Analyst, dan UI/UX Designer.
 
 ---
@@ -50,7 +50,8 @@ d:\agent v2\
 │   ├── f5.md                             # Dokumentasi Fase 5 (Docker Management)
 │   ├── f6.md                             # Dokumentasi Fase 6 (Kubernetes & ArgoCD)
 │   ├── f7.md                             # Dokumentasi Fase 7 (Real-Time & WebSocket)
-│   └── f8.md                             # Dokumentasi Fase 8 (Alerting & Incident Management)
+│   ├── f8.md                             # Dokumentasi Fase 8 (Alerting & Incident Management)
+│   └── f9.md                             # Dokumentasi Fase 9 (AI Service & Chat Agent)
 ├── apps/
 │   ├── backend/                          # Backend API Engine (Go 1.24, Chi, pgxpool, go-redis)
 │   │   ├── cmd/server/main.go            # Entrypoint HTTP Server (:8080) & WS Hub
@@ -182,28 +183,35 @@ Semua kode telah diuji secara komprehensif tanpa toleransi error:
 ## 5. Menghadapi Fase 9: AI Service & Chat Agent (Briefing Arsitektur)
 
 > [!CAUTION]
+> **STATUS FASE 9**: **SELESAI 100% (Terverifikasi & Terdokumentasi di implementasi_plan/f9.md)**
+> - Python 3.12 AI Microservice FastAPI (`:8000`) dengan 13 tools (8 read, 5 write with human-in-the-loop approval), multi-provider (Gemini, OpenAI, Claude, Ollama, Mock), circuit breaker, dan security injection sanitizer.
+> - Go Backend Echo integration (`AIRepository`, `HTTPAIClient`, `AIService`, `AIHandler`) pada `/api/v1/ai/*` dan `/api/v1/incidents/:id/rca` dengan persistensi PostgreSQL `ai_sessions`, `ai_messages`, `ai_action_audit_log`, `ai_usage_tracking`, dan `incidents.rca_summary`.
+> - Frontend Next.js 16 floating AI Chat Drawer dengan model selector, tool approval card, serta tombol aktif AI RCA pada modal insiden di `/incidents`.
+> - Semua pengujian (Pytest 14/14, Go tests 100%, Vitest 60/60, PowerShell end-to-end 7/7) lulus tanpa kompromi.
+
+---
+
+## 5. Persiapan Menuju Fase 10 (CI/CD Pipeline & GitOps Promotion)
+
 > **PENTING UNTUK AGENT SELANJUTNYA**:
-> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 9 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 9"*.
+> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 10 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 10"*.
 
-Ketika pengguna menginstruksikan untuk memulai Fase 9, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1016-1100+):
+Ketika pengguna menginstruksikan untuk memulai Fase 10, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1127-1200+ dan `arsitektur_sistem.md`):
 
-### 5.1 Ruang Lingkup Fase 9
-1. **Layanan Microservice Python (`apps/ai-service`)**:
-   - Runtime: Python 3.11+ dengan framework FastAPI dan Uvicorn.
-   - LLM: Google Gemini 2.5 Flash menggunakan API Key (`GOOGLE_API_KEY`).
-   - Orkestrasi Agent: LangGraph StateGraph untuk mengelola siklus Reason-Act (ReAct) agent yang mampu memanggil tools secara iteratif.
-   - Basis Pengetahuan RAG: ChromaDB / Qdrant lokal untuk mengindeks dokumen runbooks, arsitektur, dan histori insiden masa lalu.
-2. **Kumpulan Tools Agent (Function Calling)**:
-   - Tool `get_container_logs`: Mengambil log dari backend Go REST API.
-   - Tool `get_pod_status`: Memeriksa status pod Kubernetes.
-   - Tool `get_prometheus_metrics`: Melakukan query metrik PromQL.
-   - Tool `get_incident_context`: Mengambil detail insiden untuk analisis akar masalah.
-   - Tool `execute_safe_action`: Menjalankan aksi mitigasi yang telah disetujui (misal restart pod, scale deployment).
-3. **Automated Root Cause Analysis (RCA)**:
-   - Saat insiden dibuka pada dashboard `/incidents`, operator dapat mengklik tombol investigasi AI.
-   - AI Service menganalisis log kontainer terkait, anomali metrik sebelum alert terpicu, dan histori kejadian serupa untuk menghasilkan ringkasan akar masalah (*Root Cause Hypothesis*) serta langkah remediasi (*Remediation Steps*).
-4. **Interactive SRE Chat Drawer pada Frontend**:
-   - Antarmuka chat AI responsif di bagian kanan layar atau modal terapung dengan streaming token response, syntax highlighting kode bash/yaml, dan tombol aksi satu-klik (*Action Buttons*).
+### 5.1 Ruang Lingkup Fase 10
+1. **CI/CD Pipeline Engine**:
+   - Webhook penerimaan GitHub / Gitea commit event.
+   - Build automation runner dan lint/test validation.
+   - Integrasi container registry lokal atau build image.
+2. **GitOps Promotion**:
+   - Integrasi mendalam dengan ArgoCD Application Controller untuk promosi lingkungan (staging -> production).
+   - Sinkronisasi manifes Kubernetes terkelola otomatis via GitOps.
+   - Deteksi out-of-sync dan rollback otomatis jika health check pasca-deployment gagal.
+3. **Frontend Pipeline Dashboard**:
+   - Tampilan visual alur pipeline build, test, scan, dan promote.
+   - Diff view perubahan manifes GitOps sebelum sinkronisasi.
+4. **Zero Mock Data & Strict Standards**:
+   - Tetap pertahankan zero mock data, typed error handling, Go comments 1-4 kata, dan pengujian unit + integrasi menyeluruh.
 
 ---
 
