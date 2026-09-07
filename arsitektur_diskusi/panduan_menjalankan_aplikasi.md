@@ -38,7 +38,36 @@ Sebelum memulai, pastikan perangkat memenuhi persyaratan berikut:
 
 ---
 
-## 3. Langkah-demi-Langkah Menjalankan Platform
+## 3. Cara Paling Cepat: 1-Click Master Launcher
+
+Anda tidak perlu menyalakan layanan satu per satu secara manual. Cukup gunakan launcher otomatis:
+
+### Melalui Windows Explorer (Klik 2x):
+1. Buka folder `d:\agent v2` di Windows File Explorer.
+2. Klik 2x file **`start-cifo.bat`**.
+
+### Atau Melalui PowerShell Terminal:
+```powershell
+Set-Location "d:\agent v2"
+.\start-cifo.bat
+```
+*(atau jalankan `powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1`)*
+
+**Apa yang dilakukan oleh launcher otomatis ini?**
+1. Memverifikasi ketersediaan file `.env`.
+2. Memeriksa status Docker Desktop (dan otomatis membukanya jika belum aktif).
+3. Menyalakan seluruh database dan testbed (PostgreSQL, Redis, Vault, VictoriaMetrics, Loki, Tempo, Docker Proxy).
+4. Menginisialisasi secrets dan policy Vault secara otomatis.
+5. Membuka jendela terpisah untuk Python AI Microservice (`port 8000`).
+6. Membuka jendela terpisah untuk Backend Go Core (`port 8080`).
+7. Membuka jendela terpisah untuk Frontend Next.js (`port 3001`).
+8. **Otomatis membuka browser Anda langsung ke halaman login** di `http://localhost:3001/login`.
+
+Untuk mematikan seluruh aplikasi secara rapi kapan saja, cukup klik 2x **`stop-cifo.bat`** (atau jalankan `.\stop-cifo.bat`).
+
+---
+
+## 4. Cara Manual (Langkah-demi-Langkah)
 
 ### Langkah 1: Persiapan Environment Configuration (`.env`)
 
