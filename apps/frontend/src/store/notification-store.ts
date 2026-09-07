@@ -51,16 +51,29 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   unreadCount: 2,
 
   addNotification: (item) => {
-    const newNotif: NotificationItem = {
-      ...item,
-      id: `notif-${Date.now()}`,
-      timestamp: new Date().toLocaleTimeString(),
-      read: false,
-    };
-    set((state) => ({
-      notifications: [newNotif, ...state.notifications],
-      unreadCount: state.unreadCount + 1,
-    }));
+    set((state) => {
+      // Ignore exact duplicate unread notification if already present
+      const isDuplicate = state.notifications.some(
+        (n) => !n.read && n.title === item.title && n.message === item.message
+      );
+      if (isDuplicate) {
+        return state;
+      }
+
+      const newNotif: NotificationItem = {
+        ...item,
+        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date().toLocaleTimeString(),
+        read: false,
+      };
+
+      // Keep at most 50 notifications in history
+      const updated = [newNotif, ...state.notifications].slice(0, 50);
+      return {
+        notifications: updated,
+        unreadCount: state.unreadCount + 1,
+      };
+    });
   },
 
   markAsRead: (id: string) => {

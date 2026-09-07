@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cifo-monitoring/backend/internal/integration"
@@ -24,6 +25,10 @@ type Streamer struct {
 
 	activeStreams   map[string]context.CancelFunc
 	activeStreamsMu sync.Mutex
+
+	notificationSeq uint64
+	alertThrottle   map[string]time.Time
+	alertThrottleMu sync.Mutex
 }
 
 // NewStreamer creates streamer instance
@@ -34,6 +39,7 @@ func NewStreamer(hub *Hub, dockerClient integration.DockerClient, k8sClient inte
 		k8sClient:     k8sClient,
 		logger:        logger,
 		activeStreams: make(map[string]context.CancelFunc),
+		alertThrottle: make(map[string]time.Time),
 	}
 
 	// register topic hooks
@@ -312,6 +318,9 @@ func (s *Streamer) listenDockerEvents(ctx context.Context) {
 
 // watchK8sEvents streams k8s events
 func (s *Streamer) watchK8sEvents(ctx context.Context) {
+	// Only broadcast push notifications for events occurring around or after backend startup
+	streamStartTime := time.Now().Add(-15 * time.Second)
+
 	for {
 		if ctx.Err() != nil {
 			return
@@ -347,10 +356,41 @@ func (s *Streamer) watchK8sEvents(ctx context.Context) {
 			s.hub.Broadcast("k8s_events", NewWSMessage(TypeK8sEvent, "k8s_events", eventPayload))
 			s.hub.Broadcast("system_events", NewWSMessage(TypeSystemEvent, "system_events", eventPayload))
 
-			// send notification if warning/critical k8s event
+			// send notification if warning/critical k8s event AND it's a current event (not historical replay)
 			if k8sEvt.Type == corev1.EventTypeWarning {
+				// 1. Check event timestamp to filter out old historical events from previous hours/boots
+				evtTime := k8sEvt.LastTimestamp.Time
+				if evtTime.IsZero() {
+					evtTime = k8sEvt.CreationTimestamp.Time
+				}
+				if !evtTime.IsZero() && evtTime.Before(streamStartTime) {
+					// Historical event: broadcasted for logs/tables, but skip popup notification
+					continue
+				}
+
+				// 2. Throttle repeated alerts for the exact same resource + reason (max 1 notification per 60s)
+				throttleKey := fmt.Sprintf("%s:%s", resource, k8sEvt.Reason)
+				s.alertThrottleMu.Lock()
+				lastSeen, exists := s.alertThrottle[throttleKey]
+				if exists && time.Since(lastSeen) < 60*time.Second {
+					s.alertThrottleMu.Unlock()
+					continue
+				}
+				s.alertThrottle[throttleKey] = time.Now()
+				// Prune throttle map if it gets too large
+				if len(s.alertThrottle) > 500 {
+					cutoff := time.Now().Add(-5 * time.Minute)
+					for k, v := range s.alertThrottle {
+						if v.Before(cutoff) {
+							delete(s.alertThrottle, k)
+						}
+					}
+				}
+				s.alertThrottleMu.Unlock()
+
+				seq := atomic.AddUint64(&s.notificationSeq, 1)
 				s.SendNotification(NotificationPayload{
-					ID:        fmt.Sprintf("k8s-%d", time.Now().UnixNano()),
+					ID:        fmt.Sprintf("k8s-%d-%d", time.Now().UnixNano(), seq),
 					Title:     fmt.Sprintf("K8s Warning: %s", k8sEvt.Reason),
 					Message:   fmt.Sprintf("%s on %s: %s", k8sEvt.Reason, resource, k8sEvt.Message),
 					Severity:  "warning",

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { dockerService } from "./docker-service";
-import { apiClient } from "../lib/api-client";
+import { apiClient } from "../lib/api";
 
-vi.mock("../lib/api-client", () => {
+vi.mock("../lib/api", () => {
   const mockClient = {
     get: vi.fn(),
     post: vi.fn(),
