@@ -10,12 +10,28 @@ datasources:
       httpMethod: POST
       timeInterval: 15s
 
-  - name: Loki
-    type: loki
-    access: proxy
-    url: http://loki:3100
-
   - name: Tempo
+    uid: tempo
     type: tempo
     access: proxy
     url: http://tempo:3200
+    jsonData:
+      httpMethod: GET
+      tracesToLogs:
+        datasourceUid: loki
+        filterByTraceID: true
+        filterBySpanID: true
+        spanStartTimeShift: "-2m"
+        spanEndTimeShift: "2m"
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          datasourceUid: tempo
+          matcherRegex: "(?:trace_id|traceID|traceId)[:=\"]\\s*\"?([a-fA-F0-9]{16,32})\"?"
+          url: "$${__value.raw}"

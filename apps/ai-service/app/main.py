@@ -1,20 +1,100 @@
+import json
+import logging
 import os
+import sys
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from app.config.settings import settings
+from app.core.telemetry import (
+    init_telemetry,
+    get_tracer,
+    extract_trace_context,
+    get_current_trace_ids,
+)
 from app.agent.orchestrator import ModelOrchestrator
 from app.agent.sanitizer import PromptSanitizer
 from app.agent.memory import ConversationMemory
 from app.providers.base import ChatMessage, ProviderResponse
 from app.tools import ALL_TOOLS, get_tool_schemas
 
+# structured json logging
+class StructuredJSONFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        trace_id, span_id = get_current_trace_ids()
+        log_entry: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "service": "cifo-ai-service",
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if trace_id:
+            log_entry["trace_id"] = trace_id
+        if span_id:
+            log_entry["span_id"] = span_id
+        if hasattr(record, "extra") and isinstance(record.extra, dict):
+            log_entry.update(record.extra)
+        return json.dumps(log_entry)
+
+
+log_handler = logging.StreamHandler(sys.stdout)
+log_handler.setFormatter(StructuredJSONFormatter())
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.handlers = [log_handler]
+
+logger = logging.getLogger("cifo-ai-service")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # init tracing on start
+    init_telemetry()
+    yield
+
+
 app = FastAPI(
     title="CIFO AIOps Service",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def trace_and_log_middleware(request: Request, call_next):
+    # extract w3c trace context
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    parent_ctx = extract_trace_context(headers)
+    tracer = get_tracer()
+
+    path = request.url.path
+    span_name = f"{request.method} {path}"
+
+    if tracer:
+        with tracer.start_as_current_span(span_name, context=parent_ctx) as span:
+            span.set_attribute("http.method", request.method)
+            span.set_attribute("http.url", str(request.url))
+            span.set_attribute("http.route", path)
+
+            trace_id, span_id = get_current_trace_ids()
+
+            response: Response = await call_next(request)
+
+            if trace_id:
+                response.headers["X-Trace-Id"] = trace_id
+                if span_id:
+                    response.headers["traceparent"] = f"00-{trace_id}-{span_id}-01"
+
+            span.set_attribute("http.status_code", response.status_code)
+            return response
+    else:
+        return await call_next(request)
+
 
 orchestrator = ModelOrchestrator()
 session_memories: dict[str, ConversationMemory] = {}
@@ -112,6 +192,10 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
     # handle chat message
     clean_message = PromptSanitizer.sanitize_input(req.message)
 
+    tracer = get_tracer()
+    trace_id, _ = get_current_trace_ids()
+    logger.info("received ai chat request for session %s (trace: %s)", req.session_id, trace_id)
+
     # detect prompt injection
     is_injection, injection_type = PromptSanitizer.detect_injection(clean_message)
     if is_injection:
@@ -146,11 +230,24 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
     context_msgs = memory.get_context()
 
     # route through multi-model orchestrator
-    response: ProviderResponse = await orchestrator.chat(
-        messages=context_msgs,
-        tools=ALL_TOOLS,
-        system_instruction=SYSTEM_PROMPT,
-    )
+    if tracer:
+        with tracer.start_as_current_span("ai.orchestrator.chat") as span:
+            span.set_attribute("ai.session_id", req.session_id)
+            span.set_attribute("ai.user_id", req.user_id)
+            span.set_attribute("ai.user_role", req.user_role)
+            response: ProviderResponse = await orchestrator.chat(
+                messages=context_msgs,
+                tools=ALL_TOOLS,
+                system_instruction=SYSTEM_PROMPT,
+            )
+            span.set_attribute("ai.model_used", response.model_used)
+            span.set_attribute("ai.provider_name", response.provider_name)
+    else:
+        response = await orchestrator.chat(
+            messages=context_msgs,
+            tools=ALL_TOOLS,
+            system_instruction=SYSTEM_PROMPT,
+        )
 
     # validate tool calls
     valid_tool_calls = PromptSanitizer.validate_tool_calls(response.tool_calls)
@@ -174,6 +271,10 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
 @app.post("/api/v1/diagnose", response_model=DiagnoseResponse)
 async def diagnose_endpoint(req: DiagnoseRequest) -> DiagnoseResponse:
     # generate automated rca
+    tracer = get_tracer()
+    trace_id, _ = get_current_trace_ids()
+    logger.info("received rca diagnose request for incident %s (trace: %s)", req.incident_id, trace_id)
+
     prompt_text = DIAGNOSIS_PROMPT.format(
         alert_name=req.alert_name,
         resource=req.resource,
@@ -184,11 +285,24 @@ async def diagnose_endpoint(req: DiagnoseRequest) -> DiagnoseResponse:
     full_query = f"{prompt_text}\n\nRecent Telemetry and Logs:\n{req.logs if req.logs else 'No raw logs attached.'}"
     diag_messages = [ChatMessage(role="user", content=full_query)]
 
-    response = await orchestrator.chat(
-        messages=diag_messages,
-        tools=None,
-        system_instruction=SYSTEM_PROMPT,
-    )
+    if tracer:
+        with tracer.start_as_current_span("ai.orchestrator.diagnose") as span:
+            span.set_attribute("ai.incident_id", req.incident_id)
+            span.set_attribute("ai.alert_name", req.alert_name)
+            span.set_attribute("ai.resource", req.resource)
+            response = await orchestrator.chat(
+                messages=diag_messages,
+                tools=None,
+                system_instruction=SYSTEM_PROMPT,
+            )
+            span.set_attribute("ai.model_used", response.model_used)
+            span.set_attribute("ai.provider_name", response.provider_name)
+    else:
+        response = await orchestrator.chat(
+            messages=diag_messages,
+            tools=None,
+            system_instruction=SYSTEM_PROMPT,
+        )
 
     return DiagnoseResponse(
         incident_id=req.incident_id,

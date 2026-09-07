@@ -12,6 +12,8 @@ $env:REDIS_PASSWORD = "cifo_redis_secret"
 $env:KEYCLOAK_URL = "http://127.0.0.1:8180"
 $env:ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
 $env:ARGOCD_URL = "https://127.0.0.1:8443"
+$env:AI_SERVICE_URL = "http://127.0.0.1:8000"
+$env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318"
 
 Set-Location "d:\agent v2\apps\backend"
 if (Test-Path ".\server.exe") {

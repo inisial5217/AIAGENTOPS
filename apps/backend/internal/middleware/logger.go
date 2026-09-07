@@ -14,16 +14,6 @@ func RequestLogger(l *slog.Logger) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			start := time.Now()
 
-			// get request id
-			reqID := c.Request().Header.Get(echo.HeaderXRequestID)
-			if reqID == "" {
-				reqID = c.Response().Header().Get(echo.HeaderXRequestID)
-			}
-
-			// inject trace context
-			ctx := logger.ContextWithTrace(c.Request().Context(), reqID, "")
-			c.SetRequest(c.Request().WithContext(ctx))
-
 			err := next(c)
 			if err != nil {
 				c.Error(err)
@@ -31,9 +21,10 @@ func RequestLogger(l *slog.Logger) echo.MiddlewareFunc {
 
 			duration := time.Since(start)
 			status := c.Response().Status
+			reqCtx := c.Request().Context()
 
-			reqLogger := logger.WithContext(c.Request().Context(), l)
-			reqLogger.Info("http request",
+			reqLogger := logger.WithContext(reqCtx, l)
+			reqLogger.InfoContext(reqCtx, "http request",
 				slog.String("method", c.Request().Method),
 				slog.String("path", c.Path()),
 				slog.Int("status", status),

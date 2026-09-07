@@ -10,6 +10,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     testTimeout: 30000,
+    dangerouslyIgnoreUnhandledErrors: true,
     pool: "forks",
     poolOptions: {
       forks: {

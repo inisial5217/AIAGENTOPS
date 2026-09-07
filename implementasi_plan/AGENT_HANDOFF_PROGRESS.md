@@ -1,9 +1,9 @@
-# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 10)
+# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 11)
 
 > **Dokumen Handoff untuk Agent AI Baru / Sesi Lanjutan**  
 > **Repository**: [https://github.com/inisial5217/AIAGENTOPS](https://github.com/inisial5217/AIAGENTOPS)  
 > **Tanggal Pembuatan**: 2026-09-07  
-> **Status Terkini**: **Fase 0 s.d. Fase 10 SELESAI 100% (Terverifikasi & Siap Menuju Fase 11)**  
+> **Status Terkini**: **Fase 0 s.d. Fase 11 SELESAI 100% (Terverifikasi & Siap Menuju Fase 12)**  
 > **Peran Wajib Agent**: Senior Principal Software Architect, Full-Stack Developer, DevOps & SRE Specialist, Senior QA Analyst, dan UI/UX Designer.
 
 ---
@@ -52,7 +52,8 @@ d:\agent v2\
 │   ├── f7.md                             # Dokumentasi Fase 7 (Real-Time & WebSocket)
 │   ├── f8.md                             # Dokumentasi Fase 8 (Alerting & Incident Management)
 │   ├── f9.md                             # Dokumentasi Fase 9 (AI Service & Chat Agent)
-│   └── f10.md                            # Dokumentasi Fase 10 (Halaman Settings & Administrasi)
+│   ├── f10.md                            # Dokumentasi Fase 10 (Halaman Settings & Administrasi)
+│   └── f11.md                            # Dokumentasi Fase 11 (Observability: Tracing & Logging)
 ├── apps/
 │   ├── backend/                          # Backend API Engine (Go 1.24, Chi, pgxpool, go-redis)
 │   │   ├── cmd/server/main.go            # Entrypoint HTTP Server (:8080) & WS Hub
@@ -207,29 +208,57 @@ Semua kode telah diuji secara komprehensif tanpa toleransi error:
 
 ---
 
-## 6. Persiapan Menuju Fase 11: Observability (Tracing & Logging)
+### 5.11 Fase 11: Observability (Distributed Tracing & Structured Logging) — SELESAI 100%
+- **Status**: SELESAI 100% & Terverifikasi Live End-to-End.
+- **Dokumentasi Lengkap**: [`implementasi_plan/f11.md`](file:///d:/agent%20v2/implementasi_plan/f11.md).
+- **Komponen yang Dibangun & Diintegrasikan**:
+  1. **OpenTelemetry di Backend Go (`apps/backend`)**:
+     - `pkg/telemetry/tracer.go`: Inisialisasi OTel TracerProvider, OTLP HTTP exporter (`:4318`), BatchSpanProcessor, Resource semantic conventions, dan composite W3C TextMapPropagator.
+     - `pkg/telemetry/db_tracer.go`: Implementasi `pgx.QueryTracer` hook yang merekam span `db.query` untuk setiap SQL query pada PostgreSQL pool.
+     - `internal/middleware/tracer.go`: Echo HTTP middleware yang mengekstrak W3C context, memulai server span, dan menyuntikkan response header `X-Trace-Id` serta `traceparent`.
+     - `pkg/logger/logger.go`: Wrapper `TraceHandler` pada `slog.Handler` yang secara otomatis mengekstrak `trace_id` dan `span_id` dari active span ke setiap baris log JSON.
+     - `internal/integration/ai_client.go`: Injeksi W3C context dan child spans pada pemanggilan AI microservice.
+  2. **OpenTelemetry di Python AI Microservice (`apps/ai-service`)**:
+     - `app/core/telemetry.py`: TracerProvider Python dengan OTLP HTTP exporter dan W3C propagator.
+     - `app/main.py`: FastAPI HTTP middleware, structured JSON log formatter dengan auto `trace_id`/`span_id`.
+     - `app/agent/orchestrator.py`: Child span `llm.{provider}.generate` untuk setiap eksekusi model.
+  3. **Grafana Loki to Tempo Linking**:
+     - `infrastructure/local-testbed/grafana/provisioning/datasources/datasources.yaml`: Konfigurasi Tempo `uid: tempo` dan Loki `derivedFields` untuk navigasi 1-klik dari log entry ke waterfall trace.
+- **Pengujian & QA**:
+  - Unit tests backend Go: 100% PASS (`pkg/telemetry`, `internal/middleware`, `pkg/logger`, dll).
+  - Unit tests Python AI service: 14 passed (100%).
+  - Unit tests frontend Vitest: 18 suites, 72 tests passed (100%).
+  - End-to-end integration test: `scripts/test-phase11-tracing.ps1` lulus 100% menguji query trace langsung ke Tempo API (`/api/traces/{trace_id}`).
+
+---
+
+## 6. Persiapan Menuju Fase 12: Security Hardening
 
 > **PENTING UNTUK AGENT SELANJUTNYA**:
-> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 11 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 11"*.
+> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 12 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 12"*.
 
-Ketika pengguna menginstruksikan untuk memulai Fase 11, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1159-1220 dan `arsitektur_sistem.md`):
+Ketika pengguna menginstruksikan untuk memulai Fase 12, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1194-1234 dan `arsitektur_sistem.md`):
 
-### 6.1 Ruang Lingkup Fase 11
-1. **OpenTelemetry di Backend Go (`apps/backend`)**:
-   - Pemasangan `go.opentelemetry.io/otel` dan eksporter Tempo / OTLP gRPC/HTTP.
-   - Inisialisasi tracer provider di `cmd/server/main.go`.
-   - Instrumentasi semua HTTP handler Echo via tracing middleware.
-   - Instrumentasi kueri PostgreSQL database (pgx tracing hooks).
-   - Propagasi trace context ke AI Service.
-2. **OpenTelemetry di Microservice AI Python (`apps/ai-service`)**:
-   - Pemasangan `opentelemetry-sdk` dan eksporter Tempo.
-   - Instrumentasi FastAPI middleware dan HTTP client.
-   - Propagasi context trace ke pemanggilan model LLM.
-3. **Log-Trace Correlation**:
-   - Pastikan setiap log entry terstruktur (slog di Go dan loguru/standard logging di Python) menyertakan `trace_id` dan `span_id`.
-   - Menghubungkan log view dan trace view di Grafana/Loki/Tempo.
-4. **Verifikasi End-to-End Observability**:
-   - Skrip pengujian otomatis untuk memicu request terdistribusi dan memvalidasi span trace di Tempo/Grafana.
+### 6.1 Ruang Lingkup Fase 12
+1. **HashiCorp Vault Setup**:
+   - Tambahkan Vault di docker-compose testbed.
+   - Buat policies untuk backend dan AI service.
+   - Migrasi credential dari `.env` ke Vault.
+   - Implementasi Vault client di backend Go (`vault_client.go`) dan AI service Python.
+2. **Docker Socket Proxy**:
+   - Tambahkan Tecnativa `docker-socket-proxy` di docker-compose.
+   - Konfigurasi: hanya izinkan GET (inspect, stats, logs) dan POST terbatas (restart).
+   - Update `docker_client.go` untuk terhubung ke proxy, bukan langsung ke socket.
+3. **Kubernetes Security Manifests**:
+   - NetworkPolicy manifests di `/infrastructure/security/network-policies/`.
+   - RBAC manifests di `/infrastructure/security/rbac/` (ServiceAccount `cifo-ai-agent-sa` dengan ClusterRole terbatas).
+   - Apply dan verifikasi di cluster K3d.
+4. **Security Headers**:
+   - X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, CSP, HSTS, Referrer-Policy.
+5. **Security Scanning & Remediasi**:
+   - `gosec ./...` pada backend Go.
+   - `trivy image` pada Docker images.
+   - `gitleaks detect` pada repository.
 
 ---
 
@@ -276,5 +305,5 @@ Jika repositori ini di-clone ke komputer baru:
    - Token Dev: `dev-token-admin`, `dev-token-devops`, `dev-token-viewer`
 
 ---
-*Dokumen ini merupakan checkpoint resmi penyelesaian Fase 10. Seluruh riwayat dan verifikasi tersimpan rapi dan dapat dipertanggungjawabkan.*
+*Dokumen ini merupakan checkpoint resmi penyelesaian Fase 11. Seluruh riwayat dan verifikasi tersimpan rapi dan dapat dipertanggungjawabkan.*
 

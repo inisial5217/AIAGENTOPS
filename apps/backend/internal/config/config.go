@@ -28,6 +28,9 @@ type Config struct {
 	KeycloakIssuer   string
 	KeycloakJWKSURL  string
 	KeycloakClientID string
+	OTelEndpoint     string
+	OTelServiceName  string
+	OTelEnabled      bool
 }
 
 // Load loads env config
@@ -74,6 +77,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	otelEndpoint := getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+	otelServiceName := getEnv("OTEL_SERVICE_NAME", "cifo-backend")
+	otelEnabledStr := getEnv("OTEL_ENABLED", "true")
+	otelEnabled := otelEnabledStr == "true" || otelEnabledStr == "1"
+
 	return &Config{
 		Port:             port,
 		Environment:      env,
@@ -93,6 +101,9 @@ func Load() (*Config, error) {
 		KeycloakIssuer:   kcIssuer,
 		KeycloakJWKSURL:  kcJWKS,
 		KeycloakClientID: kcClientID,
+		OTelEndpoint:     otelEndpoint,
+		OTelServiceName:  otelServiceName,
+		OTelEnabled:      otelEnabled,
 	}, nil
 }
 

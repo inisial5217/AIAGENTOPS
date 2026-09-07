@@ -20,6 +20,7 @@ import (
 	"github.com/cifo-monitoring/backend/internal/service"
 	"github.com/cifo-monitoring/backend/internal/ws"
 	"github.com/cifo-monitoring/backend/pkg/logger"
+	"github.com/cifo-monitoring/backend/pkg/telemetry"
 	"github.com/cifo-monitoring/backend/pkg/validator"
 	"github.com/labstack/echo/v4"
 )
@@ -42,6 +43,24 @@ func main() {
 	// create base context
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// init tracer provider
+	shutdownTracer, err := telemetry.InitTracer(ctx, telemetry.TracerConfig{
+		ServiceName: cfg.OTelServiceName,
+		Endpoint:    cfg.OTelEndpoint,
+		Environment: cfg.Environment,
+		Enabled:     cfg.OTelEnabled,
+	})
+	if err != nil {
+		appLogger.Warn("failed to initialize tracer", slog.String("error", err.Error()))
+	} else {
+		defer func() {
+			flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer flushCancel()
+			_ = shutdownTracer(flushCtx)
+		}()
+		appLogger.Info("telemetry tracer initialized", slog.String("endpoint", cfg.OTelEndpoint))
+	}
 
 	// init database pool
 	dbPool, err := repository.NewPostgresPool(ctx, cfg.DatabaseDSN, appLogger)
@@ -171,6 +190,7 @@ func main() {
 	settingsHandler := handler.NewSettingsHandler(settingsService)
 
 	// register global middleware
+	e.Use(middleware.TracerMiddleware(cfg.OTelServiceName))
 	e.Use(middleware.RequestLogger(appLogger))
 	e.Use(middleware.Recover(appLogger))
 	e.Use(middleware.CORS(cfg.AllowedOrigins))

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/cifo-monitoring/backend/pkg/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -15,6 +16,9 @@ func NewPostgresPool(ctx context.Context, dsn string, logger *slog.Logger) (*pgx
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
+
+	// attach otel query tracer
+	cfg.ConnConfig.Tracer = telemetry.NewDBQueryTracer()
 
 	// configure connection pool
 	cfg.MinConns = 5

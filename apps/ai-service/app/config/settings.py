@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     max_context_messages: int = 20
     session_ttl_minutes: int = 30
 
+    # observability
+    otel_endpoint: str = "http://localhost:4318/v1/traces"
+    otel_enabled: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

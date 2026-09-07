@@ -9,6 +9,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // AIChatClientResponse response from ai service
@@ -73,6 +79,16 @@ func (c *HTTPAIClient) Chat(
 	role string,
 	history []map[string]string,
 ) (*AIChatClientResponse, error) {
+	tracer := otel.GetTracerProvider().Tracer("cifo-ai-client")
+	ctx, span := tracer.Start(ctx, "ai_service.chat",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("ai.session_id", sessionID),
+			attribute.String("ai.user_role", role),
+		),
+	)
+	defer span.End()
+
 	// execute chat post
 	payload := map[string]interface{}{
 		"session_id": sessionID,
@@ -84,30 +100,53 @@ func (c *HTTPAIClient) Chat(
 
 	data, err := json.Marshal(payload)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("marshal chat payload: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/chat", bytes.NewBuffer(data))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("create chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	// propagate trace context
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("call ai service chat: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ai service error %d: %s", resp.StatusCode, string(bodyBytes))
+		err = fmt.Errorf("ai service error %d: %s", resp.StatusCode, string(bodyBytes))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
 	}
 
 	var chatResp AIChatClientResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("decode chat response: %w", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("ai.model_used", chatResp.ModelUsed),
+		attribute.String("ai.provider_name", chatResp.ProviderName),
+		attribute.Int("ai.input_tokens", chatResp.InputTokens),
+		attribute.Int("ai.output_tokens", chatResp.OutputTokens),
+	)
+	span.SetStatus(codes.Ok, "")
+
 	return &chatResp, nil
 }
 
@@ -122,6 +161,18 @@ func (c *HTTPAIClient) Diagnose(
 	logs string,
 	metrics map[string]interface{},
 ) (*AIDiagnoseClientResponse, error) {
+	tracer := otel.GetTracerProvider().Tracer("cifo-ai-client")
+	ctx, span := tracer.Start(ctx, "ai_service.diagnose",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("ai.incident_id", incidentID),
+			attribute.String("ai.alert_name", alertName),
+			attribute.String("ai.resource", resource),
+			attribute.String("ai.severity", severity),
+		),
+	)
+	defer span.End()
+
 	// execute rca post
 	payload := map[string]interface{}{
 		"incident_id": incidentID,
@@ -135,50 +186,88 @@ func (c *HTTPAIClient) Diagnose(
 
 	data, err := json.Marshal(payload)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("marshal diagnose payload: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/diagnose", bytes.NewBuffer(data))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("create diagnose request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	// propagate trace context
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("call ai service diagnose: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ai diagnose error %d: %s", resp.StatusCode, string(bodyBytes))
+		err = fmt.Errorf("ai diagnose error %d: %s", resp.StatusCode, string(bodyBytes))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
 	}
 
 	var diagResp AIDiagnoseClientResponse
 	if err := json.NewDecoder(resp.Body).Decode(&diagResp); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("decode diagnose response: %w", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("ai.model_used", diagResp.ModelUsed),
+		attribute.String("ai.provider_name", diagResp.ProviderName),
+		attribute.Int("ai.input_tokens", diagResp.InputTokens),
+		attribute.Int("ai.output_tokens", diagResp.OutputTokens),
+	)
+	span.SetStatus(codes.Ok, "")
+
 	return &diagResp, nil
 }
 
 // GetModels query model status
 func (c *HTTPAIClient) GetModels(ctx context.Context) (map[string]interface{}, error) {
+	tracer := otel.GetTracerProvider().Tracer("cifo-ai-client")
+	ctx, span := tracer.Start(ctx, "ai_service.models", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+
 	// fetch model status
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/models", nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("create models request: %w", err)
 	}
 
+	// propagate trace context
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("call ai service models: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("decode models response: %w", err)
 	}
+
+	span.SetStatus(codes.Ok, "")
 	return result, nil
 }

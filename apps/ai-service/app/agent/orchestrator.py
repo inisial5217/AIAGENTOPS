@@ -8,6 +8,7 @@ from app.providers.anthropic_provider import AnthropicProvider
 from app.providers.ollama_provider import OllamaProvider
 from app.providers.mock_provider import DeterministicMockProvider
 from app.agent.circuit_breaker import CircuitBreaker, CircuitState
+from app.core.telemetry import get_tracer
 from app.tools.base import ToolDefinition
 
 logger = logging.getLogger("cifo.ai.orchestrator")
@@ -52,12 +53,26 @@ class ModelOrchestrator:
                 logger.warning("skipping tripped circuit", extra={"provider": p_name})
                 continue
 
+            tracer = get_tracer()
             try:
-                response = await provider.chat(
-                    messages=messages,
-                    tools=tools,
-                    system_instruction=system_instruction,
-                )
+                if tracer:
+                    with tracer.start_as_current_span(f"llm.{p_name}.generate") as span:
+                        span.set_attribute("llm.provider", p_name)
+                        span.set_attribute("llm.model", provider.model_name)
+                        response = await provider.chat(
+                            messages=messages,
+                            tools=tools,
+                            system_instruction=system_instruction,
+                        )
+                        span.set_attribute("llm.input_tokens", response.input_tokens)
+                        span.set_attribute("llm.output_tokens", response.output_tokens)
+                        span.set_attribute("llm.cost_usd", response.estimated_cost_usd)
+                else:
+                    response = await provider.chat(
+                        messages=messages,
+                        tools=tools,
+                        system_instruction=system_instruction,
+                    )
                 cb.record_success()
 
                 if self.active_provider_name != p_name:
