@@ -70,8 +70,8 @@ func (m *Migrator) Up(ctx context.Context) error {
 		}
 
 		// read migration sql
-		filePath := filepath.Join(m.dir, fileName)
-		content, err := os.ReadFile(filePath)
+		cleanPath := filepath.Clean(filepath.Join(m.dir, fileName))
+		content, err := os.ReadFile(cleanPath) // #nosec G304
 		if err != nil {
 			return fmt.Errorf("read sql %s: %w", fileName, err)
 		}

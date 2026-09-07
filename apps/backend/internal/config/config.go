@@ -1,11 +1,15 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/cifo-monitoring/backend/internal/security"
 )
 
 // Config application settings
@@ -31,6 +35,9 @@ type Config struct {
 	OTelEndpoint     string
 	OTelServiceName  string
 	OTelEnabled      bool
+	VaultAddr        string
+	VaultToken       string
+	VaultEnabled     bool
 }
 
 // Load loads env config
@@ -61,6 +68,41 @@ func Load() (*Config, error) {
 	kcIssuer := getEnv("KEYCLOAK_ISSUER", fmt.Sprintf("%s/realms/%s", kcURL, kcRealm))
 	kcJWKS := getEnv("KEYCLOAK_JWKS_URL", fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs", kcURL, kcRealm))
 	kcClientID := getEnv("KEYCLOAK_CLIENT_ID", "cifo-frontend")
+
+	vaultAddr := getEnv("VAULT_ADDR", "http://127.0.0.1:8200")
+	vaultToken := getEnv("VAULT_TOKEN", "cifo-vault-root-token")
+	vaultEnabledStr := getEnv("VAULT_ENABLED", "true")
+	vaultEnabled := (vaultEnabledStr == "true" || vaultEnabledStr == "1") && vaultAddr != ""
+
+	// load secrets from vault if available
+	if vaultEnabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		vc := security.NewVaultClient(vaultAddr, vaultToken)
+		if secrets, err := vc.GetSecret(ctx, "cifo/backend"); err == nil && secrets != nil {
+			if v, ok := secrets["DATABASE_DSN"].(string); ok && v != "" {
+				dsn = v
+			}
+			if v, ok := secrets["REDIS_ADDR"].(string); ok && v != "" {
+				redisAddr = v
+			}
+			if v, ok := secrets["REDIS_PASSWORD"].(string); ok && v != "" {
+				redisPass = v
+			}
+			if v, ok := secrets["DOCKER_HOST"].(string); ok && v != "" {
+				dockerHost = v
+			}
+			if v, ok := secrets["ARGOCD_TOKEN"].(string); ok && v != "" {
+				argocdToken = v
+			}
+			if v, ok := secrets["TELEGRAM_BOT_TOKEN"].(string); ok && v != "" {
+				telegramToken = v
+			}
+			if v, ok := secrets["TELEGRAM_CHAT_ID"].(string); ok && v != "" {
+				telegramChatID = v
+			}
+		}
+	}
 
 	// validate required fields
 	if strings.TrimSpace(dsn) == "" {
@@ -104,6 +146,9 @@ func Load() (*Config, error) {
 		OTelEndpoint:     otelEndpoint,
 		OTelServiceName:  otelServiceName,
 		OTelEnabled:      otelEnabled,
+		VaultAddr:        vaultAddr,
+		VaultToken:       vaultToken,
+		VaultEnabled:     vaultEnabled,
 	}, nil
 }
 

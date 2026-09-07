@@ -250,3 +250,53 @@ func TestIncidentService_CheckEscalations(t *testing.T) {
 	repo.AssertExpectations(t)
 	notif.AssertExpectations(t)
 }
+
+func TestIncidentService_Transition_Invalid(t *testing.T) {
+	log := logger.New("DEBUG", "test")
+	repo := new(mockIncidentRepo)
+	audit := new(mockAuditRepo)
+	svc := NewIncidentService(repo, audit, nil, log)
+
+	ctx := context.Background()
+	userUUID := "user-1"
+
+	// cannot acknowledge already closed incident
+	closedInc := &model.Incident{
+		ID:     "inc-closed",
+		Status: model.IncidentStatusClosed,
+	}
+	repo.On("GetByID", ctx, "inc-closed").Return(closedInc, nil)
+
+	err := svc.AcknowledgeIncident(ctx, "inc-closed", userUUID, "127.0.0.1")
+	assert.Error(t, err)
+
+	// cannot resolve closed incident
+	repo.On("GetByID", ctx, "inc-closed-2").Return(closedInc, nil)
+	err = svc.ResolveIncident(ctx, "inc-closed-2", userUUID, "127.0.0.1")
+	assert.Error(t, err)
+
+	// not found incident
+	repo.On("GetByID", ctx, "inc-missing").Return(nil, nil)
+	err = svc.AcknowledgeIncident(ctx, "inc-missing", userUUID, "127.0.0.1")
+	assert.Error(t, err)
+}
+
+func TestIncidentService_GetIncidentStats(t *testing.T) {
+	log := logger.New("DEBUG", "test")
+	repo := new(mockIncidentRepo)
+	svc := NewIncidentService(repo, nil, nil, log)
+
+	ctx := context.Background()
+	stats := &model.IncidentStats{
+		Total:        10,
+		Open:         3,
+		Acknowledged: 2,
+		Resolved:     4,
+		Closed:       1,
+	}
+	repo.On("GetStats", ctx).Return(stats, nil)
+
+	res, err := svc.GetIncidentStats(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, res.Total)
+}

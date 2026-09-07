@@ -7,6 +7,7 @@ describe("WebSocketClient", () => {
 
   beforeEach(() => {
     client = new WebSocketClient();
+    client.connect = vi.fn();
   });
 
   it("initializes with disconnected status", () => {

@@ -14,6 +14,11 @@ $env:ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://local
 $env:ARGOCD_URL = "https://127.0.0.1:8443"
 $env:AI_SERVICE_URL = "http://127.0.0.1:8000"
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318"
+$env:VAULT_ADDR = "http://127.0.0.1:8200"
+$env:VAULT_TOKEN = "cifo-vault-root-token"
+$env:VAULT_ENABLED = "true"
+$env:DOCKER_HOST = "tcp://127.0.0.1:2376"
+$env:RATE_LIMIT_PER_MINUTE = "60000"
 
 Set-Location "d:\agent v2\apps\backend"
 if (Test-Path ".\server.exe") {

@@ -200,6 +200,7 @@ func (s *DefaultAIService) ProcessChat(
 		MessageID:        asstMsg.ID,
 		Role:             "assistant",
 		Content:          clientResp.Content,
+		Reply:            clientResp.Content,
 		ModelUsed:        clientResp.ModelUsed,
 		ProviderName:     clientResp.ProviderName,
 		InputTokens:      clientResp.InputTokens,

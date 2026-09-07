@@ -1,0 +1,23 @@
+{{- if .Values.aiService.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cifo.fullname" . }}-ai-service
+  labels:
+    {{- include "cifo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-service
+spec:
+  type: {{ .Values.aiService.service.type }}
+  ports:
+    - port: {{ .Values.aiService.service.httpPort }}
+      targetPort: 8000
+      protocol: TCP
+      name: http
+    - port: {{ .Values.aiService.service.grpcPort }}
+      targetPort: 50051
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "cifo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-service
+{{- end }}

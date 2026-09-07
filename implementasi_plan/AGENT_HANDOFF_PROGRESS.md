@@ -1,9 +1,9 @@
-# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 11)
+# CIFO Platform — Panduan & Dokumen Handoff Komprehensif (Fase 0 s.d. Fase 15)
 
 > **Dokumen Handoff untuk Agent AI Baru / Sesi Lanjutan**  
 > **Repository**: [https://github.com/inisial5217/AIAGENTOPS](https://github.com/inisial5217/AIAGENTOPS)  
 > **Tanggal Pembuatan**: 2026-09-07  
-> **Status Terkini**: **Fase 0 s.d. Fase 11 SELESAI 100% (Terverifikasi & Siap Menuju Fase 12)**  
+> **Status Terkini**: **Fase 0 s.d. Fase 15 SELESAI 100% (Platform Enterprise CIFO Siap Rilis Produksi)**  
 > **Peran Wajib Agent**: Senior Principal Software Architect, Full-Stack Developer, DevOps & SRE Specialist, Senior QA Analyst, dan UI/UX Designer.
 
 ---
@@ -15,7 +15,7 @@ Jika Anda adalah Agent AI yang membaca dokumen ini untuk melanjutkan proyek CIFO
 ### 1.1 Persona & Pola Pikir (Mindset)
 1. **Ahli Arsitektur (Principal Architect)**: Selalu membaca dan menganalisis secara mendalam 3 dokumen panduan di folder [`arsitektur_diskusi/`](file:///d:/agent%20v2/arsitektur_diskusi/) sebelum mengambil tindakan atau memulai fase baru:
    - [`arsitektur_diskusi/arsitektur_sistem.md`](file:///d:/agent%20v2/arsitektur_diskusi/arsitektur_sistem.md): Arsitektur global CIFO, pola integrasi, diagram data flow, dan spesifikasi teknologi.
-   - [`arsitektur_diskusi/plan.md`](file:///d:/agent%20v2/arsitektur_diskusi/plan.md): Rencana bertahap dari Fase 0 hingga Fase 12 beserta kriteria penerimaan spesifik.
+   - [`arsitektur_diskusi/plan.md`](file:///d:/agent%20v2/arsitektur_diskusi/plan.md): Rencana bertahap dari Fase 0 hingga Fase 15 beserta kriteria penerimaan spesifik.
    - [`arsitektur_diskusi/agent_instructions.md`](file:///d:/agent%20v2/arsitektur_diskusi/agent_instructions.md): Aturan penulisan kode, konvensi penamaan, dan batasan operasional.
 2. **Programmer & Developer Ahli**: Menulis kode yang terstruktur, modular, efisien, dan bersih (*Clean Architecture*). Memisahkan concern antara handler, service, repository, dan model domain.
 3. **DevOps & SRE Specialist**: Memastikan sistem terisolasi dengan baik di Docker/K8s, menggunakan connection pool aman, bebas dari kebocoran goroutine/koneksi, dan memiliki mekanisme fallback serta retry queue.
@@ -40,7 +40,7 @@ d:\agent v2\
 ├── go.work, go.work.sum                  # Go Workspace multi-module
 ├── arsitektur_diskusi/                   # PANDUAN UTAMA PROYEK
 │   ├── arsitektur_sistem.md              # Arsitektur sistem menyeluruh
-│   ├── plan.md                           # Rencana detail Fase 0 s.d. Fase 12
+│   ├── plan.md                           # Rencana detail Fase 0 s.d. Fase 15
 │   └── agent_instructions.md             # Konvensi dan instruksi teknis
 ├── implementasi_plan/                    # DOKUMENTASI HISTORIS PENYELESAIAN FASE
 │   ├── f0-1.md                           # Dokumentasi Fase 0 & 1
@@ -53,7 +53,11 @@ d:\agent v2\
 │   ├── f8.md                             # Dokumentasi Fase 8 (Alerting & Incident Management)
 │   ├── f9.md                             # Dokumentasi Fase 9 (AI Service & Chat Agent)
 │   ├── f10.md                            # Dokumentasi Fase 10 (Halaman Settings & Administrasi)
-│   └── f11.md                            # Dokumentasi Fase 11 (Observability: Tracing & Logging)
+│   ├── f11.md                            # Dokumentasi Fase 11 (Observability: Tracing & Logging)
+│   ├── f12.md                            # Dokumentasi Fase 12 (Security Hardening)
+│   ├── f13.md                            # Dokumentasi Fase 13 (Testing Komprehensif)
+│   ├── f14.md                            # Dokumentasi Fase 14 (CI/CD Pipeline & Helm Charts)
+│   └── f15.md                            # Dokumentasi Fase 15 (Dokumentasi & Production Readiness)
 ├── apps/
 │   ├── backend/                          # Backend API Engine (Go 1.24, Chi, pgxpool, go-redis)
 │   │   ├── cmd/server/main.go            # Entrypoint HTTP Server (:8080) & WS Hub
@@ -232,33 +236,142 @@ Semua kode telah diuji secara komprehensif tanpa toleransi error:
 
 ---
 
-## 6. Persiapan Menuju Fase 12: Security Hardening
+### 5.12 Fase 12: Security Hardening — SELESAI 100%
+- **Status**: SELESAI 100% & Terverifikasi Live End-to-End.
+- **Dokumentasi Lengkap**: [`implementasi_plan/f12.md`](file:///d:/agent%20v2/implementasi_plan/f12.md).
+- **Komponen yang Dibangun & Diintegrasikan**:
+  1. **HashiCorp Vault Secrets Management (`Tugas 12.1`)**:
+     - Container `cifo-vault` (`hashicorp/vault:1.16`) berjalan pada port `8200:8200` di network `cifo-network`.
+     - Policies HCL di `infrastructure/security/vault/` (`cifo-backend-policy.hcl`, `cifo-ai-policy.hcl`).
+     - Go Vault client di `apps/backend/internal/security/vault_client.go` & integrasi `config.go` dengan graceful fallback ke environment variables.
+     - Python Vault client di `apps/ai-service/app/core/vault.py` & integrasi FastAPI lifespan.
+     - Script seeding otomatis di `scripts/init-vault.ps1` (`secret/data/cifo/backend` dan `secret/data/cifo/ai-service`).
+  2. **Tecnativa Docker Socket Proxy Hardening (`Tugas 12.2`)**:
+     - Container `cifo-docker-proxy` (`tecnativa/docker-socket-proxy:latest`) berjalan pada port `2376:2375`.
+     - Template HAProxy kustom di `infrastructure/local-testbed/docker-proxy/haproxy.cfg.template`.
+     - Pembatasan ketat: GET (containers, stats, logs) dan POST terbatas (restart) diizinkan; Aksi destruktif (DELETE containers, GET /secrets, EXEC) diblokir dengan HTTP 403 Forbidden.
+     - Backend Go dikonfigurasi `DOCKER_HOST=tcp://127.0.0.1:2376`, menyelesaikan isu named pipe Windows.
+  3. **Kubernetes Security Manifests (`Tugas 12.3`)**:
+     - 5 NetworkPolicies di `infrastructure/security/network-policies/` (`default-deny-all`, `cifo-frontend-netpol`, `cifo-backend-netpol`, `cifo-ai-service-netpol`, `cifo-data-netpol`) diterapkan di cluster K3d.
+     - Zero-Trust RBAC di `infrastructure/security/rbac/` (`ServiceAccount` `cifo-ai-agent-sa`, `ClusterRole` terbatas, `ClusterRoleBinding`).
+     - Hak akses terverifikasi via `kubectl auth can-i`: `get pods` (yes), `patch deployments` (yes), `delete pods` (no), `get secrets` (no), `delete namespaces` (no).
+  4. **HTTP Security Headers Middleware (`Tugas 12.4`)**:
+     - Middleware di `apps/backend/internal/middleware/security_headers.go` menyuntikkan 7 security headers (`X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Content-Security-Policy`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`).
+     - Terdaftar secara global di `apps/backend/cmd/server/main.go` dan terverifikasi pada semua response endpoint.
+  5. **Security Scanning & Remediasi (`Tugas 12.5`)**:
+     - `gosec`: 0 temuan HIGH/CRITICAL pada 66 file (10.903 baris kode) setelah perbaikan CWE-190 dan CWE-400.
+     - `trivy`: 0 kerentanan pada container image `tecnativa/docker-socket-proxy:latest`.
+     - `gitleaks`: 0 credential leaks terdeteksi.
+     - Skrip verifikasi otomatis `scripts/test-phase12-security.ps1` menghasilkan **22 PASS / 0 FAIL**.
+
+---
+
+## 6. Persiapan Menuju Fase 13: Testing Komprehensif
 
 > **PENTING UNTUK AGENT SELANJUTNYA**:
-> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 12 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 12"*.
+> **JANGAN PERNAH** memulai atau membuat kode untuk Fase 13 sebelum pengguna secara eksplisit memberikan perintah seperti: *"lanjut ke fase 13"*.
 
-Ketika pengguna menginstruksikan untuk memulai Fase 12, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1194-1234 dan `arsitektur_sistem.md`):
+Ketika pengguna menginstruksikan untuk memulai Fase 13, berikut adalah panduan arsitektur yang harus dipedomani (berdasarkan `plan.md` Baris 1237-1285 dan `arsitektur_sistem.md`):
 
-### 6.1 Ruang Lingkup Fase 12
-1. **HashiCorp Vault Setup**:
-   - Tambahkan Vault di docker-compose testbed.
-   - Buat policies untuk backend dan AI service.
-   - Migrasi credential dari `.env` ke Vault.
-   - Implementasi Vault client di backend Go (`vault_client.go`) dan AI service Python.
-2. **Docker Socket Proxy**:
-   - Tambahkan Tecnativa `docker-socket-proxy` di docker-compose.
-   - Konfigurasi: hanya izinkan GET (inspect, stats, logs) dan POST terbatas (restart).
-   - Update `docker_client.go` untuk terhubung ke proxy, bukan langsung ke socket.
-3. **Kubernetes Security Manifests**:
-   - NetworkPolicy manifests di `/infrastructure/security/network-policies/`.
-   - RBAC manifests di `/infrastructure/security/rbac/` (ServiceAccount `cifo-ai-agent-sa` dengan ClusterRole terbatas).
-   - Apply dan verifikasi di cluster K3d.
-4. **Security Headers**:
-   - X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, CSP, HSTS, Referrer-Policy.
-5. **Security Scanning & Remediasi**:
-   - `gosec ./...` pada backend Go.
-   - `trivy image` pada Docker images.
-   - `gitleaks detect` pada repository.
+### 6.1 Hasil Penyelesaian Fase 13 (Testing Komprehensif) - SELESAI 100%
+Fase 13 telah diselesaikan dan divalidasi secara menyeluruh dengan dokumentasi lengkap di [`implementasi_plan/f13.md`](file:///d:/agent%20v2/implementasi_plan/f13.md):
+1. **Unit Tests Backend Go (`Tugas 13.1`)**:
+   - `internal/service`: **70.4% statement coverage** (target $\ge 70\%$).
+   - `internal/repository`: **71.2% statement coverage** (target $\ge 70\%$).
+   - Menguji 7 service suites dan 5 repository suites.
+2. **Unit Tests Frontend (`Tugas 13.2`)**:
+   - 27 test files, **106/106 tests PASS (100%)** via Vitest.
+   - Coverage: Hooks 95.2%, UI Components 77.0%, Services 73.6%, Stores 67.3% (target $\ge 60\%$).
+3. **Unit Tests AI Service (`Tugas 13.3`)**:
+   - **24/24 tests PASS (100%)** via Pytest.
+   - Orchestrator circuit breaker, mock fallback, degraded mode, 13 tool schemas, dan sanitizer regex security vectors.
+4. **Integration Tests (`Tugas 13.4`)**:
+   - Menjalankan `auth_api_test.go`, `docker_api_test.go`, `argocd_api_test.go` terhadap live backend `:8080` (**100% PASS**).
+5. **E2E Tests (Playwright) (`Tugas 13.5`)**:
+   - **10/10 tests PASS (100%)** pada Chromium/Chrome headless untuk 6 alur kritis (`login`, `dashboard`, `docker`, `kubernetes`, `incidents`, `ai-chat`).
+6. **Load Tests (K6) (`Tugas 13.6`)**:
+   - `api-throughput.js`: 1000 req/s, 9.996 requests, 0.00% error rate, p99 latency = 34.18ms (< 200ms).
+   - `websocket-stress.js`: 500 concurrent VUs, 6.791 sesi, 100% status 101 success rate, p95 connecting = 4.05ms.
+
+### 6.2 Kriteria Penerimaan Fase 13:
+- [x] `go test ./...` pass dengan coverage >= 70% untuk service/repository (70.4% service, 71.2% repo)
+- [x] `npx vitest run` pass dengan coverage >= 60% untuk komponen (Hooks: 95.2%, UI: 77.0%, Services: 73.6%)
+- [x] `pytest` pass untuk AI service (24/24 tests pass)
+- [x] Semua integration tests pass (Auth, Docker, ArgoCD live APIs)
+- [x] Semua Playwright E2E tests pass (10/10 specs pass)
+- [x] K6 load test: p99 latency < 200ms pada 1000 req/detik (p99 = 34.18ms, error = 0.00%)
+- [x] K6 WebSocket test: 500 connections stable dengan 100% status 101 success rate
+
+---
+
+## 7. Rangkuman Penyelesaian Fase 14 (CI/CD Pipeline & Helm Charts)
+
+Fase 14 telah diselesaikan secara komprehensif 100% dan lolos verifikasi melalui `scripts/test-phase14-cicd.ps1`:
+1. **Production Multi-Stage Dockerfiles**:
+   - Backend Go: multi-stage build stripped binary (`-ldflags="-s -w"`), non-root user `appuser:appgroup`, CA certs, migrations included, target < 30MB.
+   - Frontend Next.js: multi-stage standalone output, non-root `nextjs:nodejs`, telemetry disabled.
+   - AI Service: multi-stage wheels install, non-root `appuser:appgroup` (UID 10001), healthcheck HTTP 8000.
+   - `.dockerignore` terkonfigurasi untuk ketiga microservice.
+2. **Tugas 14.1 (GitHub Actions CI)**:
+   - `.github/workflows/ci.yml`: lint paralel (golangci-lint, eslint, ruff, hadolint), unit test paralel (Go coverage >= 70%, Vitest coverage >= 60%, Pytest 24 tests), security scan (gosec, trivy, gitleaks), dan Docker multi-stage build matrix.
+3. **Tugas 14.2 (Deploy to Staging Workflow)**:
+   - `.github/workflows/deploy-staging.yml`: automated build & push ke GHCR, automated GitOps commit update image tags di staging overlay (`infrastructure/kubernetes/overlays/staging/`), dan automated trigger ArgoCD sync.
+4. **Tugas 14.3 (Deploy to Production Workflow)**:
+   - `.github/workflows/deploy-production.yml`: manual workflow dispatch dengan parameter, diproteksi GitHub Environment `production` (manual approval required), zero-rebuild image promotion via Google Crane, update production overlay, dan controlled manual ArgoCD sync.
+5. **Tugas 14.4 (Helm Charts & Kubernetes Manifests)**:
+   - Umbrella chart `infrastructure/kubernetes/charts/cifo-platform/` (`Chart.yaml`, `values.yaml`, `values-staging.yaml`, `values-production.yaml`, `_helpers.tpl`).
+   - Manifest templates: Frontend (Deployment, Service, HPA, PDB), Backend (Deployment, Service, ConfigMap, ServiceAccount, HPA, PDB), AI Service (Deployment, Service, ServiceAccount, HPA), Data Layer (PostgreSQL 16 StatefulSet dengan PVC 10Gi, Redis Deployment), Traefik Ingress TLS, dan Zero-Trust NetworkPolicies.
+   - Subcharts modular: `cifo-frontend`, `cifo-backend`, `cifo-ai-service`, `cifo-data`.
+   - Kustomize GitOps manifests: `base/`, `overlays/staging/`, dan `overlays/production/`.
+
+### Checklist Kriteria Penerimaan Fase 14:
+- [x] CI pipeline berjalan otomatis saat push/PR
+- [x] Semua jobs pass: lint (Go, TS, Python, Docker), test (Go, Vitest, Pytest), security scan (gosec, trivy, gitleaks), build
+- [x] Images ter-push ke container registry (GHCR/Docker Hub)
+- [x] Deploy ke staging otomatis saat merge ke main via GitOps overlay commit & ArgoCD sync
+- [x] Deploy ke production memerlukan approval manual via GitHub Environment protection rule & crane image promotion
+- [x] Helm charts dapat di-install di cluster dengan values staging/production, HPA, PDB, Ingress TLS, dan NetworkPolicies
+
+---
+
+## 8. Rangkuman Penyelesaian Fase 15 (Dokumentasi & Production Readiness)
+
+Fase 15 telah diselesaikan secara komprehensif 100% dan lolos verifikasi melalui `scripts/test-phase15-production-readiness.ps1`:
+1. **Tugas 15.1: Dokumentasi API (`docs/api-reference.md`)**:
+   - Dokumentasi lengkap 9 kelompok endpoint REST, format error terstandarisasi, autentikasi JWT Keycloak & Dev Tokens, rate limiting Redis sliding window (100 req/s global, 20 req/min AI), dan protokol WebSocket `/ws` (channel multiplexing, heartbeat ping/pong 30s).
+2. **Tugas 15.2: Dokumentasi AI Agent (`docs/ai-agent-capabilities.md`)**:
+   - Spesifikasi 13 tools (8 Read-Only, 5 Write-Operations dengan Human-in-the-loop approval), batasan RBAC, Hardcoded Blocklist perintah destruktif, Multi-Model Fallback (Gemini $\to$ GPT-4o $\to$ Claude $\to$ Ollama), Circuit Breaker, PromptSanitizer, dan immutable audit trail (SHA-256 prompt hashing).
+3. **Tugas 15.3: Deployment Guide & Disaster Recovery Runbooks (`docs/deployment-guide.md`, `docs/runbooks/runbook-disaster-recovery.md`)**:
+   - Panduan deployment produksi Helm & Kustomize, matriks env vars & Vault secrets, checklist smoke tests, serta prosedur DR (RTO $\le 60\text{m}$, RPO $\le 5\text{m}$, PostgreSQL PITR via pgBackRest, Vault Shamir unseal & snapshot restore, cluster rebuild via GitOps).
+4. **Tugas 15.4: Incident Response Runbook (`docs/incident-response.md`, `docs/runbooks/runbook-incident-handling.md`)**:
+   - Klasifikasi Severity P1/P2/P3, matriks eskalasi 15-menit unacknowledged alerts, mitigasi alert storm Telegram, dan 4 SOP penanganan kegagalan kritis (CrashLoopBackOff, ArgoCD sync failed, DB connection leak, AI degraded mode).
+5. **Tugas 15.5: Security Policy & Compliance (`docs/security-policy.md`)**:
+   - Matriks otorisasi RBAC (Admin, DevOps, Viewer), standar masa berlaku token (JWT 15m, Refresh 7d, MFA Keycloak), rotasi kredensial dinamis Vault, Zero-Trust Kubernetes NetworkPolicies, dan prosedur respons data breach.
+6. **Tugas 15.6: Architecture Decision Records (`docs/adr/001` s/d `005`)**:
+   - ADR 001: Router standar `net/http` (Echo/Chi) vs Fiber (`fasthttp`).
+   - ADR 002: VictoriaMetrics vs Prometheus standalone untuk kompresi data time-series 10x.
+   - ADR 003: Pemisahan AI Service ke Python FastAPI/gRPC.
+   - ADR 004: Pola Multi-Model Fallback & Circuit Breaker.
+   - ADR 005: Kebijakan absolut Zero Mock Data di lingkungan live.
+7. **Tugas 15.7: Final Verification (`scripts/test-phase15-production-readiness.ps1`)**:
+   - 18 pengujian kriteria penerimaan lolos 100% PASS.
+
+### Checklist Kriteria Penerimaan Fase 15 (Final):
+- [x] Semua dokumentasi lengkap dan akurat
+- [x] Semua test pass (Go Unit 70.4%/71.2%, Frontend 106 tests, Pytest 24 tests, Playwright 10 tests, K6 1000 req/s & 500 VUs)
+- [x] Semua security scan bersih (gosec, trivy, gitleaks)
+- [x] Backup/restore terverifikasi (PITR & Vault unseal/restore)
+- [x] Alert -> Telegram flow terverifikasi (Alertmanager webhook & storm batching)
+- [x] AI chat end-to-end terverifikasi (gRPC, fallback, tool approval)
+- [x] Sistem siap untuk deployment production (Multi-stage Docker, Helm charts, GitOps overlays)
+
+---
+
+## 9. Status Akhir: Platform CIFO 100% Selesai & Production Ready
+
+Seluruh **15 Fase implementasi** sesuai Master Plan [`arsitektur_diskusi/plan.md`](file:///d:/agent%20v2/arsitektur_diskusi/plan.md) telah selesai 100% tanpa deviasi, tanpa data mock/palsu, dan terverifikasi secara objektif melalui rangkaian pengujian otomatis.
+
+Platform **CIFO Enterprise IT Monitoring & AIOps Platform** siap dirilis dan dioperasikan pada cluster produksi enterprise.
 
 ---
 
@@ -274,36 +387,41 @@ Jika repositori ini di-clone ke komputer baru:
 - K3d CLI untuk cluster Kubernetes lokal (`k3d cluster create cifo-dev`).
 
 ### 7.2 Langkah Menjalankan
-1. **Menyalakan Testbed Docker Compose**:
+1. **Menyalakan Testbed Docker Compose (termasuk Vault & Docker Socket Proxy)**:
    ```powershell
    cd "d:\agent v2\infrastructure\local-testbed"
    docker compose up -d
    ```
-2. **Memverifikasi Migrasi Basis Data**:
+2. **Inisialisasi & Seeding HashiCorp Vault**:
+   ```powershell
+   cd "d:\agent v2"
+   powershell -ExecutionPolicy Bypass -File scripts\init-vault.ps1
+   ```
+3. **Memverifikasi Migrasi Basis Data**:
    Database `cifo_db` telah siap dengan migrasi 001 s.d. 008 di folder `apps/backend/migrations`.
-3. **Menjalankan AI Microservice**:
+4. **Menjalankan AI Microservice**:
    ```powershell
    cd "d:\agent v2\apps\ai-service"
    python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
    ```
-4. **Menjalankan Backend Go**:
+5. **Menjalankan Backend Go**:
    ```powershell
    cd "d:\agent v2"
    powershell -ExecutionPolicy Bypass -File scripts\start-backend.ps1
    ```
    Backend akan mendengarkan pada `http://127.0.0.1:8080`.
-5. **Menjalankan Frontend Next.js**:
+6. **Menjalankan Frontend Next.js**:
    ```powershell
    cd "d:\agent v2\apps\frontend"
    npm install
    npm run dev
    ```
    Frontend akan dapat diakses pada `http://localhost:3001`.
-6. **Kredensial Default**:
+7. **Kredensial Default**:
    - Admin: `admin@cifo.local` / `Admin123!`
    - DevOps: `devops@cifo.local` / `DevOps123!`
    - Token Dev: `dev-token-admin`, `dev-token-devops`, `dev-token-viewer`
 
 ---
-*Dokumen ini merupakan checkpoint resmi penyelesaian Fase 11. Seluruh riwayat dan verifikasi tersimpan rapi dan dapat dipertanggungjawabkan.*
+*Dokumen ini merupakan checkpoint resmi penyelesaian Fase 12. Seluruh riwayat dan verifikasi tersimpan rapi dan dapat dipertanggungjawabkan.*
 

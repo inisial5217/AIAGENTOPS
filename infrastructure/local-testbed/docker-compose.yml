@@ -125,6 +125,53 @@ services:
     networks:
       - cifo-network
 
+  vault:
+    image: hashicorp/vault:1.16
+    container_name: cifo-vault
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:-cifo-vault-root-token}
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - cifo-network
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: cifo-docker-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      INFO: 1
+      VERSION: 1
+      EVENTS: 1
+      PING: 1
+      POST: 1
+      ALLOW_RESTARTS: 1
+      EXEC: 0
+      AUTH: 0
+      BUILD: 0
+      SECRETS: 0
+      SWARM: 0
+      SERVICES: 0
+      TASKS: 0
+      PLUGINS: 0
+      NODES: 0
+      SYSTEM: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker-proxy/haproxy.cfg.template:/usr/local/etc/haproxy/haproxy.cfg.template:ro
+    ports:
+      - "2376:2375"
+    networks:
+      - cifo-network
+
 networks:
   cifo-network:
     name: cifo-network
@@ -137,3 +184,4 @@ volumes:
   prometheus_data:
   loki_data:
   tempo_data:
+  vault_data:

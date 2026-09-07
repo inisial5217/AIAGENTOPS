@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { useWebSocket } from "../../hooks/use-websocket";
 import { LogPayload, WSMessage } from "../../types/websocket";
+import { wsClient } from "../../lib/ws-client";
 
 export interface LogTerminalProps {
   topic?: string;
@@ -42,12 +43,11 @@ export function LogTerminal({
   const { isConnected, status } = useWebSocket(topics, { enabled: !!topic });
 
   // sync initial logs if updated
+  const prevInitialLogsRef = React.useRef(initialLogs);
   React.useEffect(() => {
-    if (initialLogs && initialLogs.length > 0) {
-      setLogs((prev) => {
-        if (prev.length === 0) return initialLogs;
-        return prev;
-      });
+    if (initialLogs && initialLogs !== prevInitialLogsRef.current && initialLogs.length > 0) {
+      prevInitialLogsRef.current = initialLogs;
+      setLogs((prev) => (prev.length === 0 ? initialLogs : prev));
     }
   }, [initialLogs]);
 
@@ -55,7 +55,6 @@ export function LogTerminal({
   React.useEffect(() => {
     if (!topic) return;
 
-    const { wsClient } = require("../../lib/ws-client");
     const handleLog = (msg: WSMessage) => {
       if (msg.type === "log_entry" && msg.data) {
         const payload = msg.data as LogPayload;

@@ -76,7 +76,10 @@ func (s *monitoringServiceImpl) GetDashboardStats(ctx context.Context) (model.Da
 	}
 
 	// real host memory telemetry
-	totalRAM := uint64(sys.TotalMemory)
+	var totalRAM uint64
+	if sys.TotalMemory > 0 {
+		totalRAM = uint64(sys.TotalMemory)
+	}
 	var usedRAM uint64
 	ramPercent := 0.0
 

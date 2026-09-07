@@ -1,0 +1,19 @@
+{{- if and .Values.data .Values.data.redis.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cifo-redis
+  labels:
+    {{- include "cifo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.data.redis.port }}
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    {{- include "cifo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+{{- end }}

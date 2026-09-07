@@ -1,0 +1,65 @@
+global:
+  environment: staging
+  domain: staging.cifo.internal
+
+frontend:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+backend:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  env:
+    ENVIRONMENT: "staging"
+    LOG_LEVEL: "DEBUG"
+
+aiService:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  env:
+    ENVIRONMENT: "staging"
+
+ingress:
+  hosts:
+    - host: staging.cifo.internal
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+          service: backend
+          port: 8080
+        - path: /ws
+          pathType: Prefix
+          service: backend
+          port: 8080
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+  tls:
+    - secretName: cifo-staging-tls
+      hosts:
+        - staging.cifo.internal

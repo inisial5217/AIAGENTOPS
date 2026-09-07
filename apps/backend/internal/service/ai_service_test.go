@@ -190,3 +190,216 @@ func TestRejectTool_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "rejected", res.ApprovalStatus)
 }
+
+func TestListSessions(t *testing.T) {
+	repo := new(mockAIRepo)
+	svc := NewDefaultAIService(repo, nil, nil, nil, nil, nil)
+	userID := uuid.New()
+
+	sessions := []model.AISession{
+		{ID: uuid.New(), UserID: userID, Status: "active"},
+	}
+	repo.On("ListSessionsByUser", mock.Anything, userID).Return(sessions, nil)
+
+	res, err := svc.ListSessions(context.Background(), userID)
+	assert.NoError(t, err)
+	assert.Len(t, res, 1)
+}
+
+func TestGetSessionMessages(t *testing.T) {
+	repo := new(mockAIRepo)
+	svc := NewDefaultAIService(repo, nil, nil, nil, nil, nil)
+	userID := uuid.New()
+	sessionID := uuid.New()
+
+	sess := &model.AISession{ID: sessionID, UserID: userID}
+	repo.On("GetSession", mock.Anything, sessionID).Return(sess, nil)
+
+	msgs := []model.AIMessage{
+		{ID: uuid.New(), SessionID: sessionID, Role: "user", Content: "hello"},
+	}
+	repo.On("GetMessagesBySession", mock.Anything, sessionID, 50).Return(msgs, nil)
+
+	res, err := svc.GetSessionMessages(context.Background(), sessionID, userID)
+	assert.NoError(t, err)
+	assert.Len(t, res, 1)
+
+	// forbidden for different user
+	otherUser := uuid.New()
+	_, err = svc.GetSessionMessages(context.Background(), sessionID, otherUser)
+	assert.Error(t, err)
+}
+
+func TestGetUsage(t *testing.T) {
+	repo := new(mockAIRepo)
+	svc := NewDefaultAIService(repo, nil, nil, nil, nil, nil)
+	userID := uuid.New()
+
+	stats := &model.AIUsageStats{TotalTokens: 100, TotalCostUSD: 0.05, RequestCount: 10}
+	// admin gets system-wide stats (userID filter is nil)
+	repo.On("GetUsageStats", mock.Anything, (*uuid.UUID)(nil)).Return(stats, nil)
+	res, err := svc.GetUsage(context.Background(), userID, "admin")
+	assert.NoError(t, err)
+	assert.Equal(t, 100, res.TotalTokens)
+
+	// viewer gets filtered stats
+	repo.On("GetUsageStats", mock.Anything, &userID).Return(stats, nil)
+	res, err = svc.GetUsage(context.Background(), userID, "viewer")
+	assert.NoError(t, err)
+	assert.Equal(t, 10, res.RequestCount)
+}
+
+func TestListModels(t *testing.T) {
+	client := new(mockAIClient)
+	svc := NewDefaultAIService(nil, nil, client, nil, nil, nil)
+
+	models := map[string]interface{}{"primary": "gemini-2.5"}
+	client.On("GetModels", mock.Anything).Return(models, nil)
+
+	res, err := svc.ListModels(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "gemini-2.5", res["primary"])
+}
+
+func TestApproveTool_EdgeCases(t *testing.T) {
+	repo := new(mockAIRepo)
+	svc := NewDefaultAIService(repo, nil, nil, nil, nil, nil)
+	userID := uuid.New()
+	approvalID := uuid.New()
+
+	// not pending
+	auditNotPending := &model.AIActionAuditLog{ID: approvalID, ApprovalStatus: "already_approved"}
+	repo.On("GetActionAudit", mock.Anything, approvalID).Return(auditNotPending, nil)
+	_, err := svc.ApproveTool(context.Background(), approvalID, userID, "devops")
+	assert.Error(t, err)
+
+	// viewer role forbidden
+	toolName := "restart_deployment"
+	auditPending := &model.AIActionAuditLog{
+		ID:             uuid.New(),
+		ApprovalStatus: "pending",
+		ToolName:       &toolName,
+	}
+	repo.On("GetActionAudit", mock.Anything, auditPending.ID).Return(auditPending, nil)
+	_, err = svc.ApproveTool(context.Background(), auditPending.ID, userID, "viewer")
+	assert.Error(t, err)
+}
+
+type mockIncidentRepoForAI struct {
+	mock.Mock
+}
+
+func (m *mockIncidentRepoForAI) Create(ctx context.Context, incident *model.Incident) error {
+	return nil
+}
+func (m *mockIncidentRepoForAI) GetByID(ctx context.Context, id string) (*model.Incident, error) {
+	args := m.Called(ctx, id)
+	if inc, ok := args.Get(0).(*model.Incident); ok {
+		return inc, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *mockIncidentRepoForAI) GetDetailByID(ctx context.Context, id string) (*model.IncidentDetail, error) {
+	return nil, nil
+}
+func (m *mockIncidentRepoForAI) List(ctx context.Context, filter model.IncidentFilter) ([]*model.IncidentSummary, int, error) {
+	return nil, 0, nil
+}
+func (m *mockIncidentRepoForAI) GetStats(ctx context.Context) (*model.IncidentStats, error) {
+	return nil, nil
+}
+func (m *mockIncidentRepoForAI) FindOpenByAlertAndResource(ctx context.Context, alertName, resourceID string) (*model.Incident, error) {
+	return nil, nil
+}
+func (m *mockIncidentRepoForAI) UpdateStatus(ctx context.Context, id string, status string, actorID *string) error {
+	return nil
+}
+func (m *mockIncidentRepoForAI) GetUnacknowledgedOlderThan(ctx context.Context, duration time.Duration) ([]*model.Incident, error) {
+	return nil, nil
+}
+func (m *mockIncidentRepoForAI) SaveNotification(ctx context.Context, notif *model.NotificationRecord) error {
+	return nil
+}
+func (m *mockIncidentRepoForAI) ListNotificationsByIncidentID(ctx context.Context, incidentID string) ([]model.NotificationRecord, error) {
+	return nil, nil
+}
+
+func TestGenerateRCAForIncident(t *testing.T) {
+	repo := new(mockAIRepo)
+	incRepo := new(mockIncidentRepoForAI)
+	client := new(mockAIClient)
+	svc := NewDefaultAIService(repo, incRepo, client, nil, nil, nil)
+
+	incID := uuid.New()
+	inc := &model.Incident{
+		ID:          incID.String(),
+		Title:       "High latency",
+		Severity:    "critical",
+		Namespace:   "prod",
+		ResourceID:  "api-gateway",
+		Description: "Timeout spike",
+	}
+
+	incRepo.On("GetByID", mock.Anything, incID.String()).Return(inc, nil)
+
+	diag := &integration.AIDiagnoseClientResponse{
+		RCASummary:       "Memory leak in pod",
+		ModelUsed:        "gemini-2.5",
+		ProviderName:     "google",
+		EstimatedCostUSD: 0.002,
+	}
+	client.On("Diagnose", mock.Anything, incID.String(), "High latency", "critical", "api-gateway", "prod", "Timeout spike", mock.Anything).Return(diag, nil)
+	repo.On("UpdateIncidentRCA", mock.Anything, incID, "Memory leak in pod").Return(nil)
+
+	res, err := svc.GenerateRCAForIncident(context.Background(), incID)
+	assert.NoError(t, err)
+	assert.Equal(t, "Memory leak in pod", res.RCASummary)
+}
+
+func TestExecuteReadOnlyTool_AllBranches(t *testing.T) {
+	svc := NewDefaultAIService(nil, nil, nil, nil, nil, nil)
+	ctx := context.Background()
+
+	res1 := svc.executeReadOnlyTool(ctx, "get_pod_status", map[string]interface{}{"namespace": "test-ns"})
+	assert.Contains(t, res1, "test-ns")
+
+	res2 := svc.executeReadOnlyTool(ctx, "get_container_logs", map[string]interface{}{"container_id": "c123"})
+	assert.Contains(t, res2, "c123")
+
+	res3 := svc.executeReadOnlyTool(ctx, "list_docker_containers", nil)
+	assert.Contains(t, res3, "Docker")
+
+	res4 := svc.executeReadOnlyTool(ctx, "get_argocd_app_status", map[string]interface{}{"app_name": "payment"})
+	assert.Contains(t, res4, "payment")
+
+	resDefault := svc.executeReadOnlyTool(ctx, "custom_read_tool", nil)
+	assert.Contains(t, resDefault, "custom_read_tool")
+}
+
+func TestExecuteWriteTool_AllBranches(t *testing.T) {
+	svc := NewDefaultAIService(nil, nil, nil, nil, nil, nil)
+	ctx := context.Background()
+
+	res1 := svc.executeWriteTool(ctx, "restart_deployment", map[string]interface{}{"namespace": "kube", "deployment_name": "core"}, "admin")
+	assert.Contains(t, res1, "core")
+
+	res2 := svc.executeWriteTool(ctx, "scale_deployment", map[string]interface{}{"namespace": "kube", "deployment_name": "core", "replicas": float64(3)}, "admin")
+	assert.Contains(t, res2, "3 replicas")
+
+	res3 := svc.executeWriteTool(ctx, "restart_container", map[string]interface{}{"container_id": "cont-1"}, "admin")
+	assert.Contains(t, res3, "cont-1")
+
+	res4 := svc.executeWriteTool(ctx, "stop_container", map[string]interface{}{"container_id": "cont-2"}, "admin")
+	assert.Contains(t, res4, "cont-2")
+
+	res5 := svc.executeWriteTool(ctx, "sync_argocd_app", map[string]interface{}{"app_name": "app-1", "prune": true}, "admin")
+	assert.Contains(t, res5, "app-1")
+
+	resDefault := svc.executeWriteTool(ctx, "unknown_write", nil, "admin")
+	assert.Contains(t, resDefault, "unknown_write")
+}
+
+func TestSha256Hex(t *testing.T) {
+	h := sha256Hex("hello world")
+	assert.NotEmpty(t, h)
+}

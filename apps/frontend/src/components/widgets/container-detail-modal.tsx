@@ -71,7 +71,7 @@ export function ContainerDetailModal({
         severity: "info",
       });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       addNotification({
         title: "Restart Failed",
         message: `Failed to restart ${detail?.name || "container"}: ${err.message}`,
@@ -91,7 +91,7 @@ export function ContainerDetailModal({
         severity: "warning",
       });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       addNotification({
         title: "Stop Failed",
         message: `Failed to stop ${detail?.name || "container"}: ${err.message}`,

@@ -1,0 +1,78 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cifo-backend-netpol
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: cifo-backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cifo-frontend
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow to Data Services (Postgres, Redis, VictoriaMetrics, Loki)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: cifo-data
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 8428
+        - protocol: TCP
+          port: 3100
+        - protocol: TCP
+          port: 4318
+    # Allow to AI Service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: cifo-ai-service
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 50051
+    # Allow to ArgoCD namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+    # Allow to Docker Socket Proxy
+    - ports:
+        - protocol: TCP
+          port: 2375
+    # Allow CoreDNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

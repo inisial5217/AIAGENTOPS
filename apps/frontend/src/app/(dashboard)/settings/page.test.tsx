@@ -16,10 +16,23 @@ vi.mock("../../../services/settings-service", () => ({
   },
 }));
 
+// mock aiService
+vi.mock("../../../services/ai-service", () => ({
+  aiService: {
+    getUsageStats: vi.fn().mockResolvedValue({
+      total_sessions: 5,
+      total_messages: 20,
+      total_tokens: 1500,
+      total_cost_usd: 0.0045,
+    }),
+  },
+}));
+
 // mock authStore
+const mockUser = { id: "admin-1", email: "admin@cifo.local", name: "System Admin", role: "admin" as const };
 vi.mock("../../../lib/auth", () => ({
   useAuthStore: () => ({
-    user: { id: "admin-1", email: "admin@cifo.local", name: "System Admin", role: "admin" },
+    user: mockUser,
   }),
 }));
 

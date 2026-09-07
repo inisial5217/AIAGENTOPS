@@ -11,6 +11,7 @@ import {
 import { useWebSocket } from "../../hooks/use-websocket";
 import { useNotificationStore } from "../../store/notification-store";
 import { NotificationPayload, WSMessage } from "../../types/websocket";
+import { wsClient } from "../../lib/ws-client";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 interface ActiveToast extends NotificationPayload {
@@ -26,11 +27,9 @@ export function NotificationToastProvider({
   const { addNotification } = useNotificationStore();
 
   // subscribe to notifications topic
-  const { isConnected } = useWebSocket(["notifications"]);
+  useWebSocket(["notifications"]);
 
   React.useEffect(() => {
-    const { wsClient } = require("../../lib/ws-client");
-
     const handleNotification = (msg: WSMessage) => {
       if (msg.type === "notification" && msg.data) {
         const payload = msg.data as NotificationPayload;

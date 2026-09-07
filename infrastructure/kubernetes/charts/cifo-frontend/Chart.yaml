@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cifo-frontend
+description: Helm chart for CIFO Frontend Next.js Dashboard
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

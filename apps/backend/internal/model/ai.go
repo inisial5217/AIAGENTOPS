@@ -82,6 +82,7 @@ type AIChatResponse struct {
 	MessageID        uuid.UUID    `json:"message_id"`
 	Role             string       `json:"role"`
 	Content          string       `json:"content"`
+	Reply            string       `json:"reply,omitempty"`
 	ModelUsed        string       `json:"model_used"`
 	ProviderName     string       `json:"provider_name"`
 	InputTokens      int          `json:"input_tokens"`

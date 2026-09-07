@@ -11,6 +11,10 @@ DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("destructive_delete_all", re.compile(r"kubectl\s+delete\s+(?:namespace|node|all)", re.IGNORECASE)),
     ("destructive_prune", re.compile(r"docker\s+system\s+prune", re.IGNORECASE)),
     ("filesystem_wipe", re.compile(r"rm\s+-rf\s+[/~]", re.IGNORECASE)),
+    ("jailbreak", re.compile(r"(?:DAN\s+mode|jailbreak|bypass\s+(?:all\s+)?(?:safety|guardrails|restrictions))", re.IGNORECASE)),
+    ("system_prompt_leak", re.compile(r"(?:show|reveal|display|output|print|repeat)\s+(?:your\s+)?(?:system\s+prompt|initial\s+instructions)", re.IGNORECASE)),
+    ("markdown_exfil", re.compile(r"!\[.*?\]\((?:https?:)?//[^\s\)]+\)", re.IGNORECASE)),
+    ("sql_destructive", re.compile(r"(?:DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE)", re.IGNORECASE)),
 ]
 
 

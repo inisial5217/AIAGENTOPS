@@ -162,3 +162,28 @@ func TestGetOverview(t *testing.T) {
 	assert.Equal(t, 1, overview["degraded"])
 	assert.Equal(t, 1, overview["progressing"])
 }
+
+func TestSyncApplication_Error(t *testing.T) {
+	mockClient := new(MockArgoCDClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewArgoCDService(mockClient, nil, logger)
+
+	req := model.ArgoSyncRequest{Prune: false}
+	mockClient.On("SyncApplication", mock.Anything, "argocd", "app-err", req).Return(assert.AnError)
+
+	ctx := context.Background()
+	err := svc.SyncApplication(ctx, "argocd", "app-err", req, "user1", "127.0.0.1")
+	assert.Error(t, err)
+}
+
+func TestGetOverview_Error(t *testing.T) {
+	mockClient := new(MockArgoCDClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewArgoCDService(mockClient, nil, logger)
+
+	mockClient.On("ListApplications", mock.Anything, "argocd").Return([]model.ArgoApplicationSummary{}, assert.AnError)
+
+	ctx := context.Background()
+	_, err := svc.GetOverview(ctx, "argocd")
+	assert.Error(t, err)
+}

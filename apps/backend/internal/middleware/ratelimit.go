@@ -35,6 +35,11 @@ func (rl *RateLimiter) LimitIP(limit int, window time.Duration) echo.MiddlewareF
 				return next(c)
 			}
 
+			path := c.Path()
+			if path == "/healthz" || path == "/readyz" || path == "/metrics" || path == "/ws" {
+				return next(c)
+			}
+
 			ip := c.RealIP()
 			key := fmt.Sprintf("ratelimit:ip:%s", ip)
 			return rl.applyLimit(c, next, key, limit, window)

@@ -113,3 +113,87 @@ func TestJWKSCache(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, &privateKey.PublicKey, pubKey)
 }
+
+func TestValidateToken_DevTokens(t *testing.T) {
+	cfg := &config.Config{Environment: "development", KeycloakIssuer: "http://test-issuer"}
+	svc := NewAuthService(cfg, nil, nil, nil, nil, nil)
+
+	claimsAdmin, err := svc.ValidateToken(context.Background(), "dev-token-admin")
+	assert.NoError(t, err)
+	assert.Equal(t, "admin@cifo.local", claimsAdmin.Email)
+	assert.Equal(t, "admin", svc.ExtractRole(claimsAdmin))
+
+	claimsDevops, err := svc.ValidateToken(context.Background(), "dev-token-devops")
+	assert.NoError(t, err)
+	assert.Equal(t, "devops", svc.ExtractRole(claimsDevops))
+
+	claimsViewer, err := svc.ValidateToken(context.Background(), "dev-token-viewer")
+	assert.NoError(t, err)
+	assert.Equal(t, "viewer", svc.ExtractRole(claimsViewer))
+}
+
+func TestValidateToken_RSA(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	assert.NoError(t, err)
+
+	cache := NewJWKSCache("http://localhost:8180/realms/cifo/protocol/openid-connect/certs", 1*time.Hour)
+	cache.Lock()
+	cache.keys["key-1"] = &privateKey.PublicKey
+	cache.expiresAt = time.Now().Add(1 * time.Hour)
+	cache.Unlock()
+
+	cfg := &config.Config{Environment: "production"}
+	svc := NewAuthService(cfg, nil, nil, nil, cache, nil)
+
+	// create token signed with private key
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, &AuthClaims{
+		Email: "prod@cifo.local",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "prod-sub-1",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+		},
+	})
+	token.Header["kid"] = "key-1"
+	tokenStr, err := token.SignedString(privateKey)
+	assert.NoError(t, err)
+
+	claims, err := svc.ValidateToken(context.Background(), tokenStr)
+	assert.NoError(t, err)
+	assert.Equal(t, "prod@cifo.local", claims.Email)
+
+	// test missing kid header
+	badToken := jwt.NewWithClaims(jwt.SigningMethodRS256, &AuthClaims{})
+	badTokenStr, err := badToken.SignedString(privateKey)
+	assert.NoError(t, err)
+	_, err = svc.ValidateToken(context.Background(), badTokenStr)
+	assert.Error(t, err)
+}
+
+func TestSyncUser_FallbackName(t *testing.T) {
+	mockRepo := &mockUserRepo{}
+	cfg := &config.Config{}
+	svc := NewAuthService(cfg, mockRepo, nil, nil, nil, nil)
+
+	claims := &AuthClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "kc-user-2"},
+		Email:            "dev@cifo.local",
+		PreferredUsername: "devuser",
+		RealmAccess:      RealmRoles{Roles: []string{"devops"}},
+	}
+
+	user, err := svc.SyncUser(context.Background(), claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "devuser", user.Name)
+
+	// when PreferredUsername is also empty, fallback to Email
+	claims.PreferredUsername = ""
+	user, err = svc.SyncUser(context.Background(), claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "dev@cifo.local", user.Name)
+}
+
+func TestBlacklistToken_Expired(t *testing.T) {
+	svc := &AuthService{}
+	err := svc.BlacklistToken(context.Background(), "token-1", time.Now().Add(-1*time.Hour))
+	assert.NoError(t, err)
+}

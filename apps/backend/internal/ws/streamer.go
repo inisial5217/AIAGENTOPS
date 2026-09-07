@@ -62,6 +62,8 @@ func (s *Streamer) handleTopicSubscribed(topic string) {
 	if strings.HasPrefix(topic, "docker_logs:") {
 		containerID := strings.TrimPrefix(topic, "docker_logs:")
 		s.startDockerLogStream(containerID)
+	} else if strings.HasPrefix(topic, "k8s_logs:") {
+		s.handleK8sLogSubscribed(topic)
 	}
 }
 
@@ -70,6 +72,8 @@ func (s *Streamer) handleTopicEmpty(topic string) {
 	if strings.HasPrefix(topic, "docker_logs:") {
 		containerID := strings.TrimPrefix(topic, "docker_logs:")
 		s.stopDockerLogStream(containerID)
+	} else if strings.HasPrefix(topic, "k8s_logs:") {
+		s.stopK8sLogStream(topic)
 	}
 }
 
@@ -148,6 +152,93 @@ func (s *Streamer) stopDockerLogStream(containerID string) {
 		cancel()
 		delete(s.activeStreams, containerID)
 		s.logger.Debug("stopped docker log stream", slog.String("id", containerID))
+	}
+}
+
+func (s *Streamer) handleK8sLogSubscribed(topic string) {
+	raw := strings.TrimPrefix(topic, "k8s_logs:")
+	parts := strings.Split(raw, ":")
+	if len(parts) >= 2 {
+		namespace := parts[0]
+		pod := parts[1]
+		container := ""
+		if len(parts) >= 3 {
+			container = parts[2]
+		}
+		s.startK8sLogStream(topic, namespace, pod, container)
+	}
+}
+
+// startK8sLogStream starts pod log reader
+func (s *Streamer) startK8sLogStream(topic string, namespace string, pod string, container string) {
+	if s.k8sClient == nil {
+		return
+	}
+
+	s.activeStreamsMu.Lock()
+	if _, exists := s.activeStreams[topic]; exists {
+		s.activeStreamsMu.Unlock()
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.activeStreams[topic] = cancel
+	s.activeStreamsMu.Unlock()
+
+	go func() {
+		defer s.stopK8sLogStream(topic)
+
+		reader, err := s.k8sClient.GetPodLogs(ctx, namespace, pod, container, 100)
+		if err != nil {
+			s.logger.Warn("k8s log stream failed", slog.String("pod", pod), slog.String("error", err.Error()))
+			return
+		}
+		defer reader.Close()
+
+		bufReader := bufio.NewReader(reader)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				line, err := bufReader.ReadString('\n')
+				if err != nil {
+					return
+				}
+				cleanLine := strings.TrimSpace(line)
+				if cleanLine == "" {
+					continue
+				}
+
+				streamType := "stdout"
+				lower := strings.ToLower(cleanLine)
+				if strings.Contains(lower, "error") || strings.Contains(lower, "fail") {
+					streamType = "stderr"
+				}
+
+				payload := LogPayload{
+					Source:    "kubernetes",
+					ID:        fmt.Sprintf("%s/%s", namespace, pod),
+					Stream:    streamType,
+					Log:       cleanLine,
+					Timestamp: time.Now().Format("15:04:05"),
+				}
+
+				s.hub.Broadcast(topic, NewWSMessage(TypeLogEntry, topic, payload))
+			}
+		}
+	}()
+}
+
+// stopK8sLogStream terminates pod log reader
+func (s *Streamer) stopK8sLogStream(topic string) {
+	s.activeStreamsMu.Lock()
+	defer s.activeStreamsMu.Unlock()
+
+	if cancel, exists := s.activeStreams[topic]; exists {
+		cancel()
+		delete(s.activeStreams, topic)
+		s.logger.Debug("stopped k8s log stream", slog.String("topic", topic))
 	}
 }
 

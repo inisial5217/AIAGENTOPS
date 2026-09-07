@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -190,12 +191,18 @@ func main() {
 	settingsHandler := handler.NewSettingsHandler(settingsService)
 
 	// register global middleware
+	e.Use(middleware.SecurityHeaders())
 	e.Use(middleware.TracerMiddleware(cfg.OTelServiceName))
 	e.Use(middleware.RequestLogger(appLogger))
 	e.Use(middleware.Recover(appLogger))
 	e.Use(middleware.CORS(cfg.AllowedOrigins))
-	e.Use(metrics.Middleware())
-	e.Use(rateLimiter.LimitIP(100, time.Minute))
+	rateLimitCount := 100
+	if rStr := os.Getenv("RATE_LIMIT_PER_MINUTE"); rStr != "" {
+		if val, err := strconv.Atoi(rStr); err == nil && val > 0 {
+			rateLimitCount = val
+		}
+	}
+	e.Use(rateLimiter.LimitIP(rateLimitCount, time.Minute))
 
 	// register probe handlers
 	e.GET("/healthz", healthHandler.Liveness)
@@ -240,6 +247,7 @@ func main() {
 	k8sGroup.GET("/deployments/:namespace/:name", k8sHandler.GetDeployment)
 	k8sGroup.POST("/deployments/:namespace/:name/restart", k8sHandler.RestartDeployment, middleware.RequireRole(authService, "devops"))
 	k8sGroup.POST("/deployments/:namespace/:name/scale", k8sHandler.ScaleDeployment, middleware.RequireRole(authService, "devops"))
+	k8sGroup.PUT("/deployments/:namespace/:name/scale", k8sHandler.ScaleDeployment, middleware.RequireRole(authService, "devops"))
 	k8sGroup.GET("/nodes", k8sHandler.ListNodes)
 	k8sGroup.GET("/services", k8sHandler.ListServices)
 	k8sGroup.GET("/overview", k8sHandler.GetClusterOverview)
@@ -248,6 +256,7 @@ func main() {
 	argoGroup := api.Group("/argocd", middleware.RequireAuth(authService))
 	argoGroup.GET("/applications", argoHandler.ListApplications)
 	argoGroup.GET("/applications/:name", argoHandler.GetApplication)
+	argoGroup.GET("/applications/:name/history", argoHandler.GetApplicationHistory)
 	argoGroup.POST("/applications/:name/sync", argoHandler.SyncApplication, middleware.RequireRole(authService, "devops"))
 	argoGroup.GET("/overview", argoHandler.GetOverview)
 

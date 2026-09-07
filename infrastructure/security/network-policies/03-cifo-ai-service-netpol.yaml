@@ -1,0 +1,51 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cifo-ai-service-netpol
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: cifo-ai-service
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only allow ingress from backend
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cifo-backend
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 50051
+  egress:
+    # Allow communication to cifo-backend
+    - to:
+        - podSelector:
+            matchLabels:
+              app: cifo-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow external HTTPS egress to LLM APIs (Google AI Studio, OpenAI, Anthropic)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Allow local Ollama inference
+    - ports:
+        - protocol: TCP
+          port: 11434
+    # Allow CoreDNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

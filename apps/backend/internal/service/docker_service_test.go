@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
@@ -16,6 +19,8 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/cifo-monitoring/backend/internal/model"
 )
 
 // MockDockerClient mock implementation of integration.DockerClient
@@ -95,13 +100,33 @@ func (m *MockDockerClient) Close() error {
 	return nil
 }
 
+// mockDockerAuditRepo mock
+type mockDockerAuditRepo struct {
+	mock.Mock
+}
+
+func (m *mockDockerAuditRepo) Create(ctx context.Context, log *model.AuditLog) error {
+	args := m.Called(ctx, log)
+	return args.Error(0)
+}
+
+func (m *mockDockerAuditRepo) List(ctx context.Context, limit, offset int) ([]*model.AuditLog, int, error) {
+	args := m.Called(ctx, limit, offset)
+	return args.Get(0).([]*model.AuditLog), args.Int(1), args.Error(2)
+}
+
 func TestListContainers_Filter(t *testing.T) {
 	mockClient := new(MockDockerClient)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := NewDockerService(mockClient, nil, nil, logger)
 
 	mockClient.On("ListContainers", mock.Anything, true).Return([]types.Container{
-		{ID: "c1", Names: []string{"/web"}, State: "running"},
+		{
+			ID:    "c1",
+			Names: []string{"/web"},
+			State: "running",
+			Ports: []types.Port{{IP: "0.0.0.0", PrivatePort: 80, PublicPort: 8080, Type: "tcp"}},
+		},
 		{ID: "c2", Names: []string{"/db"}, State: "exited"},
 	}, nil)
 
@@ -123,6 +148,223 @@ func TestListContainers_Filter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, stopped, 1)
 	assert.Equal(t, "c2", stopped[0].ID)
+}
+
+func TestGetContainer_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	jsonResp := types.ContainerJSON{
+		ContainerJSONBase: &types.ContainerJSONBase{
+			ID:   "c123",
+			Name: "/cifo-app",
+			State: &types.ContainerState{
+				Status:  "running",
+				Running: true,
+			},
+		},
+		Config: &container.Config{
+			Image:  "cifo:latest",
+			Labels: map[string]string{"env": "test"},
+		},
+		NetworkSettings: &types.NetworkSettings{
+			DefaultNetworkSettings: types.DefaultNetworkSettings{
+				IPAddress: "172.18.0.2",
+			},
+		},
+	}
+
+	mockClient.On("GetContainer", mock.Anything, "c123").Return(jsonResp, nil)
+
+	ctx := context.Background()
+	detail, err := svc.GetContainer(ctx, "c123")
+	assert.NoError(t, err)
+	assert.Equal(t, "cifo-app", detail.Name)
+	assert.Equal(t, "172.18.0.2", detail.IPAddress)
+	assert.True(t, detail.State.Running)
+}
+
+func TestGetContainer_Error(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("GetContainer", mock.Anything, "c-notfound").Return(types.ContainerJSON{}, errors.New("not found"))
+
+	ctx := context.Background()
+	_, err := svc.GetContainer(ctx, "c-notfound")
+	assert.Error(t, err)
+}
+
+func TestGetContainerStats_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	statsJSON := `{
+		"name": "/cifo-web",
+		"cpu_stats": {
+			"cpu_usage": {"total_usage": 200000000, "percpu_usage": [100000000, 100000000]},
+			"system_cpu_usage": 2000000000,
+			"online_cpus": 2
+		},
+		"precpu_stats": {
+			"cpu_usage": {"total_usage": 100000000},
+			"system_cpu_usage": 1000000000
+		},
+		"memory_stats": {
+			"usage": 52428800,
+			"limit": 104857600
+		},
+		"networks": {
+			"eth0": {"rx_bytes": 1024, "tx_bytes": 2048}
+		},
+		"pids_stats": {
+			"current": 5
+		}
+	}`
+
+	mockClient.On("GetContainerStats", mock.Anything, "c1").Return(types.ContainerStats{
+		Body: io.NopCloser(bytes.NewBufferString(statsJSON)),
+	}, nil)
+
+	ctx := context.Background()
+	stats, err := svc.GetContainerStats(ctx, "c1")
+	assert.NoError(t, err)
+	assert.Equal(t, "cifo-web", stats.ContainerName)
+	assert.Equal(t, uint64(52428800), stats.MemoryUsageBytes)
+	assert.Equal(t, 50.0, stats.MemoryPercentage)
+	assert.Equal(t, uint64(5), stats.PidsCurrent)
+}
+
+func TestRestartContainer_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	mockAudit := new(mockDockerAuditRepo)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, mockAudit, nil, logger)
+
+	mockClient.On("RestartContainer", mock.Anything, "c1").Return(nil)
+	mockAudit.On("Create", mock.Anything, mock.Anything).Return(nil)
+
+	ctx := context.Background()
+	err := svc.RestartContainer(ctx, "c1", "admin@cifo.local", "127.0.0.1")
+	assert.NoError(t, err)
+	mockClient.AssertExpectations(t)
+	mockAudit.AssertExpectations(t)
+}
+
+func TestRestartContainer_Error(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("RestartContainer", mock.Anything, "c1").Return(errors.New("restart blocked"))
+
+	ctx := context.Background()
+	err := svc.RestartContainer(ctx, "c1", "admin@cifo.local", "127.0.0.1")
+	assert.Error(t, err)
+}
+
+func TestStopContainer_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	mockAudit := new(mockDockerAuditRepo)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, mockAudit, nil, logger)
+
+	mockClient.On("StopContainer", mock.Anything, "c1").Return(nil)
+	mockAudit.On("Create", mock.Anything, mock.Anything).Return(nil)
+
+	ctx := context.Background()
+	err := svc.StopContainer(ctx, "c1", "admin@cifo.local", "127.0.0.1")
+	assert.NoError(t, err)
+}
+
+func TestStopContainer_Error(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("StopContainer", mock.Anything, "c1").Return(errors.New("stop failed"))
+
+	ctx := context.Background()
+	err := svc.StopContainer(ctx, "c1", "admin@cifo.local", "127.0.0.1")
+	assert.Error(t, err)
+}
+
+func TestListImages_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("ListImages", mock.Anything).Return([]image.Summary{
+		{ID: "img-1", RepoTags: []string{"alpine:latest"}, Size: 5000000},
+	}, nil)
+
+	ctx := context.Background()
+	imgs, err := svc.ListImages(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, imgs, 1)
+	assert.Equal(t, "alpine:latest", imgs[0].RepoTags[0])
+}
+
+func TestListVolumes_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("ListVolumes", mock.Anything).Return(volume.ListResponse{
+		Volumes: []*volume.Volume{
+			{Name: "cifo_data", Driver: "local", Mountpoint: "/var/lib/docker/volumes/cifo_data"},
+		},
+	}, nil)
+
+	ctx := context.Background()
+	vols, err := svc.ListVolumes(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, vols, 1)
+	assert.Equal(t, "cifo_data", vols[0].Name)
+}
+
+func TestListNetworks_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("ListNetworks", mock.Anything).Return([]network.Inspect{
+		{ID: "net-1", Name: "cifo-net", Driver: "bridge", Scope: "local"},
+	}, nil)
+
+	ctx := context.Background()
+	nets, err := svc.ListNetworks(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, nets, 1)
+	assert.Equal(t, "cifo-net", nets[0].Name)
+}
+
+func TestGetSystemInfo_Success(t *testing.T) {
+	mockClient := new(MockDockerClient)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := NewDockerService(mockClient, nil, nil, logger)
+
+	mockClient.On("GetSystemInfo", mock.Anything).Return(system.Info{
+		Containers:        10,
+		ContainersRunning: 8,
+		ContainersPaused:  0,
+		ContainersStopped: 2,
+		Images:            15,
+		ServerVersion:     "24.0.7",
+		OperatingSystem:   "Linux",
+		NCPU:              4,
+		MemTotal:          16000000000,
+	}, nil)
+
+	ctx := context.Background()
+	sys, err := svc.GetSystemInfo(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, sys.ContainersTotal)
+	assert.Equal(t, 8, sys.ContainersRunning)
+	assert.Equal(t, "24.0.7", sys.DockerVersion)
 }
 
 func TestGetContainerLogs_Demux(t *testing.T) {

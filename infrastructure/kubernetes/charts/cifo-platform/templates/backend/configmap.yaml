@@ -1,0 +1,21 @@
+{{- if .Values.backend.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cifo.fullname" . }}-backend-config
+  labels:
+    {{- include "cifo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  SERVER_PORT: {{ .Values.backend.env.SERVER_PORT | quote }}
+  ENVIRONMENT: {{ .Values.backend.env.ENVIRONMENT | quote }}
+  LOG_LEVEL: {{ .Values.backend.env.LOG_LEVEL | quote }}
+  DB_HOST: {{ .Values.backend.env.DB_HOST | quote }}
+  DB_PORT: {{ .Values.backend.env.DB_PORT | quote }}
+  DB_NAME: {{ .Values.backend.env.DB_NAME | quote }}
+  DB_USER: {{ .Values.backend.env.DB_USER | quote }}
+  REDIS_ADDR: {{ .Values.backend.env.REDIS_ADDR | quote }}
+  AI_SERVICE_ADDR: {{ .Values.backend.env.AI_SERVICE_ADDR | quote }}
+  VAULT_ADDR: {{ .Values.backend.env.VAULT_ADDR | quote }}
+  VAULT_ENABLED: {{ .Values.backend.env.VAULT_ENABLED | quote }}
+{{- end }}

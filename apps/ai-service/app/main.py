@@ -14,6 +14,7 @@ from app.core.telemetry import (
     extract_trace_context,
     get_current_trace_ids,
 )
+from app.core.vault import apply_vault_secrets_to_settings
 from app.agent.orchestrator import ModelOrchestrator
 from app.agent.sanitizer import PromptSanitizer
 from app.agent.memory import ConversationMemory
@@ -53,6 +54,8 @@ logger = logging.getLogger("cifo-ai-service")
 async def lifespan(app: FastAPI):
     # init tracing on start
     init_telemetry()
+    # load credentials from vault
+    apply_vault_secrets_to_settings(settings)
     yield
 
 

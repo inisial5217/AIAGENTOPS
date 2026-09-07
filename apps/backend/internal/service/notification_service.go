@@ -46,7 +46,7 @@ func (s *DefaultNotificationService) Notify(ctx context.Context, inc *model.Inci
 
 	// telegram notification async
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer cancel()
 
 		var status = "sent"

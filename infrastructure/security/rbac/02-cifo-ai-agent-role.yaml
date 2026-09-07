@@ -1,0 +1,55 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cifo-ai-agent-role
+  labels:
+    app.kubernetes.io/name: cifo-ai-agent
+    app.kubernetes.io/part-of: cifo-monitoring
+rules:
+  # 1. Read-only access to Core resources (NO secrets, NO configmaps)
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/status
+      - services
+      - endpoints
+      - events
+      - namespaces
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+
+  # 2. Read-only access to Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/status
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
+
+  # 3. Patch permission strictly on deployments for AI remediation (restart & scale)
+  # NOTE: Explicitly NO delete verb, NO create verb on namespaces or workloads
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/scale
+    verbs:
+      - patch
+
+  # 4. Read-only access to Batch resources (jobs, cronjobs)
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs:
+      - get
+      - list
+      - watch

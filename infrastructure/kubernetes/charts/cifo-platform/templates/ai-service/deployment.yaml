@@ -1,0 +1,56 @@
+{{- if .Values.aiService.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cifo.fullname" . }}-ai-service
+  labels:
+    {{- include "cifo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-service
+spec:
+  {{- if not .Values.aiService.autoscaling.enabled }}
+  replicas: {{ .Values.aiService.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cifo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ai-service
+  template:
+    metadata:
+      labels:
+        {{- include "cifo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ai-service
+    spec:
+      serviceAccountName: {{ .Values.aiService.serviceAccount.name }}
+      containers:
+        - name: ai-service
+          image: "{{ .Values.aiService.image.repository }}:{{ .Values.aiService.image.tag }}"
+          imagePullPolicy: {{ .Values.aiService.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          env:
+            - name: HTTP_PORT
+              value: {{ .Values.aiService.env.HTTP_PORT | quote }}
+            - name: GRPC_PORT
+              value: {{ .Values.aiService.env.GRPC_PORT | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.aiService.env.ENVIRONMENT | quote }}
+            - name: PRIMARY_MODEL
+              value: {{ .Values.aiService.env.PRIMARY_MODEL | quote }}
+            - name: FALLBACK_MODEL
+              value: {{ .Values.aiService.env.FALLBACK_MODEL | quote }}
+          livenessProbe:
+            {{- toYaml .Values.aiService.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.aiService.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.aiService.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 10001
+{{- end }}

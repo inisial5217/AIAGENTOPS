@@ -55,4 +55,8 @@ kubeconfig
 scratch/
 .cache/
 .gocache/
-
+**/coverage
+**/coverage/
+**/coverage.out
+**/test-results/
+.pytest_cache/

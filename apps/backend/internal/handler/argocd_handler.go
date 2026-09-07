@@ -108,3 +108,25 @@ func (h *ArgoCDHandler) GetOverview(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, overview)
 }
+
+// GetApplicationHistory returns deployment history
+func (h *ArgoCDHandler) GetApplicationHistory(c echo.Context) error {
+	name := c.Param("name")
+	namespace := c.QueryParam("namespace")
+	ctx := c.Request().Context()
+
+	app, err := h.argoService.GetApplication(ctx, namespace, name)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, middleware.ProblemDetail{
+			Title:    "Not Found",
+			Status:   http.StatusNotFound,
+			Detail:   err.Error(),
+			Instance: c.Request().RequestURI,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":  app.History,
+		"total": len(app.History),
+	})
+}

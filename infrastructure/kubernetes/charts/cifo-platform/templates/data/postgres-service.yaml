@@ -1,0 +1,19 @@
+{{- if and .Values.data .Values.data.postgres.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cifo-postgres
+  labels:
+    {{- include "cifo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.data.postgres.port }}
+      targetPort: 5432
+      protocol: TCP
+      name: postgresql
+  selector:
+    {{- include "cifo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+{{- end }}

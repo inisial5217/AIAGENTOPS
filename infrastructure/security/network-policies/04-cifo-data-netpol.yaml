@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cifo-data-netpol
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: cifo-data
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only accept incoming traffic from cifo-backend
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cifo-backend
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 8428
+        - protocol: TCP
+          port: 3100
+        - protocol: TCP
+          port: 4318
+  egress:
+    # Deny all external egress; only allow DNS if needed
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

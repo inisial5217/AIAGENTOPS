@@ -1,0 +1,74 @@
+global:
+  environment: production
+  domain: cifo.internal
+
+frontend:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+backend:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  env:
+    ENVIRONMENT: "production"
+    LOG_LEVEL: "INFO"
+
+aiService:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 3Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  env:
+    ENVIRONMENT: "production"
+
+ingress:
+  hosts:
+    - host: cifo.internal
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+          service: backend
+          port: 8080
+        - path: /ws
+          pathType: Prefix
+          service: backend
+          port: 8080
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+  tls:
+    - secretName: cifo-prod-tls
+      hosts:
+        - cifo.internal

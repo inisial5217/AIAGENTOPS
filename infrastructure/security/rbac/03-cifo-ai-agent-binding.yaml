@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cifo-ai-agent-binding
+  labels:
+    app.kubernetes.io/name: cifo-ai-agent
+    app.kubernetes.io/part-of: cifo-monitoring
+subjects:
+  - kind: ServiceAccount
+    name: cifo-ai-agent-sa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cifo-ai-agent-role
+  apiGroup: rbac.authorization.k8s.io

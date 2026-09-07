@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -72,4 +73,77 @@ func TestTelegramService_FormatBatchSummary(t *testing.T) {
 	assert.Contains(t, summary, "- [WARNING] HighCPU on web-01")
 	assert.Contains(t, summary, "- [CRITICAL] DiskFull on db-01")
 	assert.Contains(t, summary, "Action Required: Review active incidents in dashboard")
+}
+
+func TestTelegramService_SendIncidentAlert_Normal(t *testing.T) {
+	log := logger.New("DEBUG", "test")
+	mockClient := &mockTelegramClient{}
+	svc := NewTelegramService(mockClient, nil, log)
+
+	inc := &model.Incident{
+		Title:       "TestIncident",
+		Description: "Testing alert send",
+		Severity:    "high",
+		ResourceID:  "res-1",
+		CreatedAt:   time.Now(),
+	}
+
+	err := svc.SendIncidentAlert(context.Background(), inc, false)
+	assert.NoError(t, err)
+	assert.Len(t, mockClient.messages, 1)
+	assert.Contains(t, mockClient.messages[0], "[HIGH] TestIncident")
+}
+
+func TestTelegramService_SendIncidentAlert_Batching(t *testing.T) {
+	log := logger.New("DEBUG", "test")
+	mockClient := &mockTelegramClient{}
+	svc := NewTelegramService(mockClient, nil, log)
+
+	for i := 1; i <= 5; i++ {
+		inc := &model.Incident{
+			Title:      "StormAlert",
+			Severity:   "warning",
+			ResourceID: "pod-1",
+			CreatedAt:  time.Now(),
+		}
+		_ = svc.SendIncidentAlert(context.Background(), inc, false)
+	}
+
+	// 1, 2, 3 sent individually, 4th triggers batch summary, 5th suppressed
+	assert.Equal(t, 4, len(mockClient.messages))
+	assert.Contains(t, mockClient.messages[3], "[SUMMARY] 4 Alerts Detected")
+}
+
+func TestTelegramService_SendIncidentAlert_Error(t *testing.T) {
+	log := logger.New("DEBUG", "test")
+	failClient := &mockFailingTelegramClient{}
+	svc := NewTelegramService(failClient, nil, log)
+
+	inc := &model.Incident{
+		Title:     "FailAlert",
+		Severity:  "low",
+		CreatedAt: time.Now(),
+	}
+
+	err := svc.SendIncidentAlert(context.Background(), inc, false)
+	assert.Error(t, err)
+}
+
+type mockFailingTelegramClient struct{}
+
+func (m *mockFailingTelegramClient) SendMessage(ctx context.Context, text string) error {
+	return errors.New("telegram api down")
+}
+
+func (m *mockFailingTelegramClient) IsConfigured() bool {
+	return true
+}
+
+func TestTelegramService_ProcessRetryQueue_NilRedis(t *testing.T) {
+	log := logger.New("DEBUG", "test")
+	mockClient := &mockTelegramClient{}
+	svc := NewTelegramService(mockClient, nil, log)
+
+	err := svc.ProcessRetryQueue(context.Background())
+	assert.NoError(t, err)
 }

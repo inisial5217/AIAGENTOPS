@@ -8,6 +8,7 @@ import { Badge } from "../ui/badge";
 import apiClient from "../../lib/api-client";
 import { useWebSocket } from "../../hooks/use-websocket";
 import { EventPayload, WSMessage } from "../../types/websocket";
+import { wsClient } from "../../lib/ws-client";
 
 export interface LogEntry {
   id: string;
@@ -71,8 +72,6 @@ export function SystemEventLogs({ isLoading = false }: { isLoading?: boolean }) 
 
   // listen to real-time events from websocket
   React.useEffect(() => {
-    const { wsClient } = require("../../lib/ws-client");
-
     const handleSystemEvent = (msg: WSMessage) => {
       if ((msg.type === "system_event" || msg.type === "container_event" || msg.type === "k8s_event") && msg.data) {
         const payload = msg.data as EventPayload;

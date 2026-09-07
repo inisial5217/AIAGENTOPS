@@ -1,0 +1,224 @@
+global:
+  environment: production
+  domain: cifo.internal
+  imageRegistry: ghcr.io/cifo
+  imagePullSecrets: []
+
+# -----------------------------------------------------------------------------
+# Frontend Service (Next.js 14 Standalone)
+# -----------------------------------------------------------------------------
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/cifo/frontend
+    pullPolicy: IfNotPresent
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 3000
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 3000
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  env:
+    NODE_ENV: production
+    NEXT_PUBLIC_BACKEND_URL: http://cifo-backend:8080
+    NEXT_PUBLIC_WS_URL: ws://cifo-backend:8080/ws
+
+# -----------------------------------------------------------------------------
+# Backend Core Service (Golang Echo/DDD Modular Monolith)
+# -----------------------------------------------------------------------------
+backend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/cifo/backend
+    pullPolicy: IfNotPresent
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8080
+  serviceAccount:
+    create: true
+    name: cifo-backend-sa
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  env:
+    SERVER_PORT: "8080"
+    ENVIRONMENT: "production"
+    LOG_LEVEL: "INFO"
+    DB_HOST: "cifo-postgres"
+    DB_PORT: "5432"
+    DB_NAME: "cifo_db"
+    DB_USER: "cifo_admin"
+    REDIS_ADDR: "cifo-redis:6379"
+    AI_SERVICE_ADDR: "cifo-ai-service:50051"
+    VAULT_ADDR: "http://cifo-vault:8200"
+    VAULT_ENABLED: "true"
+
+# -----------------------------------------------------------------------------
+# AI Service (Python FastAPI & gRPC Agent)
+# -----------------------------------------------------------------------------
+aiService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/cifo/ai-service
+    pullPolicy: IfNotPresent
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    httpPort: 8000
+    grpcPort: 50051
+  serviceAccount:
+    create: true
+    name: cifo-ai-agent-sa
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1.5Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8000
+    initialDelaySeconds: 15
+    periodSeconds: 15
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 75
+  env:
+    HTTP_PORT: "8000"
+    GRPC_PORT: "50051"
+    ENVIRONMENT: "production"
+    PRIMARY_MODEL: "gemini"
+    FALLBACK_MODEL: "openai"
+
+# -----------------------------------------------------------------------------
+# Data Layer (PostgreSQL & Redis)
+# -----------------------------------------------------------------------------
+data:
+  postgres:
+    enabled: true
+    image: postgres:16-alpine
+    port: 5432
+    storageSize: 10Gi
+    storageClass: ""
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+    database: cifo_db
+    user: cifo_admin
+    existingSecret: cifo-postgres-secret
+  redis:
+    enabled: true
+    image: redis:7-alpine
+    port: 6379
+    storageSize: 5Gi
+    storageClass: ""
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    existingSecret: cifo-redis-secret
+
+# -----------------------------------------------------------------------------
+# Ingress Configuration (Traefik / NGINX)
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: "traefik"
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  hosts:
+    - host: cifo.internal
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+          service: backend
+          port: 8080
+        - path: /ws
+          pathType: Prefix
+          service: backend
+          port: 8080
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+  tls:
+    - secretName: cifo-tls-secret
+      hosts:
+        - cifo.internal
+
+# -----------------------------------------------------------------------------
+# Security & Network Policies
+# -----------------------------------------------------------------------------
+networkPolicies:
+  enabled: true

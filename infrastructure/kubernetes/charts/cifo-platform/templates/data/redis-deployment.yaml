@@ -1,0 +1,29 @@
+{{- if and .Values.data .Values.data.redis.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cifo.fullname" . }}-redis
+  labels:
+    {{- include "cifo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cifo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "cifo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.data.redis.image }}
+          ports:
+            - name: redis
+              containerPort: {{ .Values.data.redis.port }}
+          resources:
+            {{- toYaml .Values.data.redis.resources | nindent 12 }}
+{{- end }}

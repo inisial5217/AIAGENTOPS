@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../security/network-policies/00-default-deny-all.yaml
+  - ../../security/network-policies/01-cifo-frontend-netpol.yaml
+  - ../../security/network-policies/02-cifo-backend-netpol.yaml
+  - ../../security/network-policies/03-cifo-ai-service-netpol.yaml
+  - ../../security/network-policies/04-cifo-data-netpol.yaml
+  - ../../security/rbac/01-cifo-ai-agent-sa.yaml
+  - ../../security/rbac/02-cifo-ai-agent-role.yaml
+  - ../../security/rbac/03-cifo-ai-agent-binding.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: cifo-platform

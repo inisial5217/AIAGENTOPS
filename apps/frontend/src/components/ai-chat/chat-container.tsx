@@ -148,7 +148,7 @@ export const ChatContainer: React.FC = () => {
         id: res.message_id,
         session_id: res.session_id,
         role: "assistant",
-        content: res.reply,
+        content: (res as any).reply || (res as any).content || "",
         tool_calls: res.tool_calls || (res.pending_tool_call ? [res.pending_tool_call] : undefined),
         latency_ms: res.latency_ms,
         cost_usd: res.cost_usd,
