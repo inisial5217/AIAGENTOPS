@@ -271,8 +271,8 @@ export function Sidebar() {
         </Link>
       </nav>
 
-      {/* Exit Button Footer */}
-      <div className="p-3 border-t border-[var(--border-subtle)] shrink-0">
+      {/* Exit Button Footer - elevated to prevent overlap with bottom-left indicators */}
+      <div className="p-3 pb-14 border-t border-[var(--border-subtle)] shrink-0">
         <button
           onClick={handleExit}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors font-mono text-xs cursor-pointer select-none"

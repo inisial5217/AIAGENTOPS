@@ -21,18 +21,19 @@ export const ModelIndicator: React.FC<ModelIndicatorProps> = ({
 }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
-  const currentModel = models.find(
-    (m) => m.id === selectedModel || m.model_name === selectedModel
+  const currentModel: ModelInfo = models.find(
+    (m) => (m.id && m.id === selectedModel) || (m.model_name && m.model_name === selectedModel)
   ) || {
     id: selectedModel || "gemini-2.0-flash",
     provider: selectedProvider || "google",
     model_name: selectedModel || "Gemini 2.0 Flash",
     is_default: true,
-    status: "available" as const,
+    status: "available",
   };
 
-  const getProviderColor = (provider: string) => {
-    switch (provider.toLowerCase()) {
+  const getProviderColor = (provider?: string) => {
+    const p = (provider || "google").toLowerCase();
+    switch (p) {
       case "google":
         return "text-blue-400 bg-blue-500/10 border-blue-500/30";
       case "openai":
@@ -63,9 +64,9 @@ export const ModelIndicator: React.FC<ModelIndicatorProps> = ({
         </span>
         <Sparkles className="h-3.5 w-3.5" />
         <span className="font-semibold uppercase tracking-wider text-[10px]">
-          {currentModel.provider}
+          {currentModel.provider || "google"}
         </span>
-        <span className="text-slate-200">{currentModel.model_name}</span>
+        <span className="text-slate-200">{currentModel.model_name || "AI Model"}</span>
         <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
@@ -81,12 +82,14 @@ export const ModelIndicator: React.FC<ModelIndicatorProps> = ({
             {models.length === 0 ? (
               <div className="px-3 py-2 text-xs text-slate-400">Loading models...</div>
             ) : (
-              models.map((m) => {
+              models.map((m, idx) => {
                 const isSelected =
                   m.id === currentModel.id || m.model_name === currentModel.model_name;
+                const mProvider = m.provider || "google";
+                const mName = m.model_name || m.id || "Model";
                 return (
                   <button
-                    key={m.id}
+                    key={m.id || `model-${idx}`}
                     type="button"
                     onClick={() => {
                       onSelectModel(m);
@@ -101,9 +104,9 @@ export const ModelIndicator: React.FC<ModelIndicatorProps> = ({
                     <div className="flex flex-col">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-[11px] text-slate-400 uppercase">
-                          {m.provider}
+                          {mProvider}
                         </span>
-                        <span className="text-slate-200">{m.model_name}</span>
+                        <span className="text-slate-200">{mName}</span>
                       </div>
                       {m.context_window && (
                         <span className="text-[10px] text-slate-500">
