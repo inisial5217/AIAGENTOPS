@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # model keys
     google_api_key: str = ""
+    gemini_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
@@ -32,7 +33,11 @@ class Settings(BaseSettings):
     otel_endpoint: str = "http://localhost:4318/v1/traces"
     otel_enabled: bool = True
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", "../../.env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()

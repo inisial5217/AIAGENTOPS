@@ -34,37 +34,54 @@ if (Test-Path $aiPolicyPath) {
     Write-Host " Applied policy: cifo-ai-service" -ForegroundColor Green
 }
 
-# 3. Seed Secrets for Backend (KV v2)
+# 3. Read overrides from root .env if available
+$envMap = @{}
+$rootEnv = Join-Path $PSScriptRoot "..\.env"
+if (Test-Path $rootEnv) {
+    Get-Content $rootEnv | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $parts = $line.Split("=", 2)
+            $k = $parts[0].Trim()
+            $v = $parts[1].Trim()
+            if ($v -and -not $v.StartsWith("your_")) {
+                $envMap[$k] = $v
+            }
+        }
+    }
+}
+
+# 4. Seed Secrets for Backend (KV v2)
 Write-Host "`n--- Seeding Secrets for Backend ---" -ForegroundColor Yellow
 $backendSecrets = @{
     data = @{
-        POSTGRES_DB             = "cifo_db"
-        POSTGRES_USER           = "cifo_admin"
-        POSTGRES_PASSWORD       = "cifo_secure_password"
-        DATABASE_DSN            = "postgres://cifo_admin:cifo_secure_password@127.0.0.1:5432/cifo_db?sslmode=disable"
-        REDIS_ADDR              = "127.0.0.1:6379"
-        REDIS_PASSWORD          = "cifo_redis_secret"
-        ARGOCD_URL              = "https://127.0.0.1:8443"
-        ARGOCD_TOKEN            = "cifo-vault-seeded-token"
-        TELEGRAM_BOT_TOKEN      = "cifo_vault_telegram_bot_token"
-        TELEGRAM_CHAT_ID        = "12345678"
-        KEYCLOAK_URL            = "http://127.0.0.1:8180"
-        KEYCLOAK_ADMIN_PASSWORD = "admin"
-        DOCKER_HOST             = "tcp://127.0.0.1:2376"
+        POSTGRES_DB             = if ($envMap["POSTGRES_DB"]) { $envMap["POSTGRES_DB"] } else { "cifo_db" }
+        POSTGRES_USER           = if ($envMap["POSTGRES_USER"]) { $envMap["POSTGRES_USER"] } else { "cifo_admin" }
+        POSTGRES_PASSWORD       = if ($envMap["POSTGRES_PASSWORD"]) { $envMap["POSTGRES_PASSWORD"] } else { "cifo_secure_password" }
+        DATABASE_DSN            = if ($envMap["DATABASE_DSN"]) { $envMap["DATABASE_DSN"] } else { "postgres://cifo_admin:cifo_secure_password@127.0.0.1:5432/cifo_db?sslmode=disable" }
+        REDIS_ADDR              = if ($envMap["REDIS_ADDR"]) { $envMap["REDIS_ADDR"] } else { "127.0.0.1:6379" }
+        REDIS_PASSWORD          = if ($envMap["REDIS_PASSWORD"]) { $envMap["REDIS_PASSWORD"] } else { "cifo_redis_secret" }
+        ARGOCD_URL              = if ($envMap["ARGOCD_URL"]) { $envMap["ARGOCD_URL"] } else { "https://127.0.0.1:8443" }
+        ARGOCD_TOKEN            = if ($envMap["ARGOCD_TOKEN"]) { $envMap["ARGOCD_TOKEN"] } else { "cifo-vault-seeded-token" }
+        TELEGRAM_BOT_TOKEN      = if ($envMap["TELEGRAM_BOT_TOKEN"]) { $envMap["TELEGRAM_BOT_TOKEN"] } else { "cifo_vault_telegram_bot_token" }
+        TELEGRAM_CHAT_ID        = if ($envMap["TELEGRAM_CHAT_ID"]) { $envMap["TELEGRAM_CHAT_ID"] } else { "12345678" }
+        KEYCLOAK_URL            = if ($envMap["KEYCLOAK_URL"]) { $envMap["KEYCLOAK_URL"] } else { "http://127.0.0.1:8180" }
+        KEYCLOAK_ADMIN_PASSWORD = if ($envMap["KEYCLOAK_ADMIN_PASSWORD"]) { $envMap["KEYCLOAK_ADMIN_PASSWORD"] } else { "admin" }
+        DOCKER_HOST             = if ($envMap["DOCKER_HOST"]) { $envMap["DOCKER_HOST"] } else { "tcp://127.0.0.1:2376" }
     }
 }
 $backendJson = $backendSecrets | ConvertTo-Json -Depth 5
 Invoke-RestMethod -Uri "$VaultAddr/v1/secret/data/cifo/backend" -Method Post -Headers $Headers -Body $backendJson | Out-Null
 Write-Host " Seeded secret/data/cifo/backend successfully" -ForegroundColor Green
 
-# 4. Seed Secrets for AI Service (KV v2)
+# 5. Seed Secrets for AI Service (KV v2)
 Write-Host "`n--- Seeding Secrets for AI Service ---" -ForegroundColor Yellow
 $aiSecrets = @{
     data = @{
-        GOOGLE_API_KEY    = "vault-google-gemini-key-live"
-        OPENAI_API_KEY    = "vault-openai-gpt4-key-live"
-        ANTHROPIC_API_KEY = "vault-anthropic-claude-key-live"
-        OLLAMA_BASE_URL   = "http://127.0.0.1:11434"
+        GOOGLE_API_KEY    = if ($envMap["GOOGLE_API_KEY"]) { $envMap["GOOGLE_API_KEY"] } elseif ($envMap["GEMINI_API_KEY"]) { $envMap["GEMINI_API_KEY"] } else { "vault-google-gemini-key-live" }
+        OPENAI_API_KEY    = if ($envMap["OPENAI_API_KEY"]) { $envMap["OPENAI_API_KEY"] } else { "vault-openai-gpt4-key-live" }
+        ANTHROPIC_API_KEY = if ($envMap["ANTHROPIC_API_KEY"]) { $envMap["ANTHROPIC_API_KEY"] } else { "vault-anthropic-claude-key-live" }
+        OLLAMA_BASE_URL   = if ($envMap["OLLAMA_BASE_URL"]) { $envMap["OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
     }
 }
 $aiJson = $aiSecrets | ConvertTo-Json -Depth 5

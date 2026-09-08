@@ -20,6 +20,22 @@ $env:VAULT_ENABLED = "true"
 $env:DOCKER_HOST = "tcp://127.0.0.1:2376"
 $env:RATE_LIMIT_PER_MINUTE = "60000"
 
+# Load overrides from root .env if present
+$rootEnv = "d:\agent v2\.env"
+if (Test-Path $rootEnv) {
+    Get-Content $rootEnv | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $parts = $line.Split("=", 2)
+            $k = $parts[0].Trim()
+            $v = $parts[1].Trim()
+            if ($v -and -not $v.StartsWith("your_")) {
+                [System.Environment]::SetEnvironmentVariable($k, $v, "Process")
+            }
+        }
+    }
+}
+
 Set-Location "d:\agent v2\apps\backend"
 if (Test-Path ".\server.exe") {
     & ".\server.exe"

@@ -18,7 +18,7 @@ class ModelOrchestrator:
     def __init__(self) -> None:
         # initialize provider adapters
         self.providers: list[LLMProvider] = [
-            GoogleGeminiProvider(api_key=settings.google_api_key),
+            GoogleGeminiProvider(api_key=settings.google_api_key or settings.gemini_api_key),
             OpenAIProvider(api_key=settings.openai_api_key),
             AnthropicProvider(api_key=settings.anthropic_api_key),
             OllamaProvider(base_url=settings.ollama_base_url),
