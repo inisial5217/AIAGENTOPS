@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI):
     init_telemetry()
     # load credentials from vault
     apply_vault_secrets_to_settings(settings)
+    orchestrator.rehydrate_providers()
     yield
 
 
@@ -122,6 +123,8 @@ class ChatRequest(BaseModel):
     user_id: str
     message: str
     user_role: str = "viewer"
+    provider: str | None = None
+    model: str | None = None
     history: list[dict[str, str]] = Field(default_factory=list)
 
 
@@ -242,6 +245,8 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
                 messages=context_msgs,
                 tools=ALL_TOOLS,
                 system_instruction=SYSTEM_PROMPT,
+                preferred_provider=req.provider or "",
+                preferred_model=req.model or "",
             )
             span.set_attribute("ai.model_used", response.model_used)
             span.set_attribute("ai.provider_name", response.provider_name)
@@ -250,6 +255,8 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
             messages=context_msgs,
             tools=ALL_TOOLS,
             system_instruction=SYSTEM_PROMPT,
+            preferred_provider=req.provider or "",
+            preferred_model=req.model or "",
         )
 
     # validate tool calls

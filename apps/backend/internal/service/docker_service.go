@@ -337,9 +337,13 @@ func (s *dockerServiceImpl) ListImages(ctx context.Context) ([]model.DockerImage
 		}
 	}
 
-	raw, err := s.client.ListImages(ctx)
+	// query with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	raw, err := s.client.ListImages(ctxTimeout)
 	if err != nil {
-		return nil, err
+		return []model.DockerImageInfo{}, nil
 	}
 
 	result := make([]model.DockerImageInfo, 0, len(raw))

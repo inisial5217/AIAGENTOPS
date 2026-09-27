@@ -44,6 +44,7 @@ type AIDiagnoseClientResponse struct {
 // AIClient interface
 type AIClient interface {
 	Chat(ctx context.Context, sessionID string, userID string, message string, role string, history []map[string]string) (*AIChatClientResponse, error)
+	ChatWithOptions(ctx context.Context, sessionID string, userID string, message string, role string, history []map[string]string, provider *string, model *string) (*AIChatClientResponse, error)
 	Diagnose(ctx context.Context, incidentID string, alertName string, severity string, resource string, namespace string, logs string, metrics map[string]interface{}) (*AIDiagnoseClientResponse, error)
 	GetModels(ctx context.Context) (map[string]interface{}, error)
 }
@@ -79,6 +80,20 @@ func (c *HTTPAIClient) Chat(
 	role string,
 	history []map[string]string,
 ) (*AIChatClientResponse, error) {
+	return c.ChatWithOptions(ctx, sessionID, userID, message, role, history, nil, nil)
+}
+
+// ChatWithOptions send chat query with options
+func (c *HTTPAIClient) ChatWithOptions(
+	ctx context.Context,
+	sessionID string,
+	userID string,
+	message string,
+	role string,
+	history []map[string]string,
+	provider *string,
+	model *string,
+) (*AIChatClientResponse, error) {
 	tracer := otel.GetTracerProvider().Tracer("cifo-ai-client")
 	ctx, span := tracer.Start(ctx, "ai_service.chat",
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -96,6 +111,12 @@ func (c *HTTPAIClient) Chat(
 		"message":    message,
 		"user_role":  role,
 		"history":    history,
+	}
+	if provider != nil && *provider != "" {
+		payload["provider"] = *provider
+	}
+	if model != nil && *model != "" {
+		payload["model"] = *model
 	}
 
 	data, err := json.Marshal(payload)

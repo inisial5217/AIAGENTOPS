@@ -78,7 +78,11 @@ func (s *argoCDServiceImpl) SyncApplication(ctx context.Context, namespace strin
 
 // GetOverview summarizes application statuses
 func (s *argoCDServiceImpl) GetOverview(ctx context.Context, namespace string) (map[string]int, error) {
-	apps, err := s.client.ListApplications(ctx, namespace)
+	// query with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	apps, err := s.client.ListApplications(ctxTimeout, namespace)
 	if err != nil {
 		return nil, err
 	}

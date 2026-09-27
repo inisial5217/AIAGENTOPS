@@ -17,13 +17,7 @@ logger = logging.getLogger("cifo.ai.orchestrator")
 class ModelOrchestrator:
     def __init__(self) -> None:
         # initialize provider adapters
-        self.providers: list[LLMProvider] = [
-            GoogleGeminiProvider(api_key=settings.google_api_key or settings.gemini_api_key),
-            OpenAIProvider(api_key=settings.openai_api_key),
-            AnthropicProvider(api_key=settings.anthropic_api_key),
-            OllamaProvider(base_url=settings.ollama_base_url),
-            DeterministicMockProvider(),
-        ]
+        self.rehydrate_providers()
 
         self.circuit_breakers: dict[str, CircuitBreaker] = {
             p.provider_name: CircuitBreaker(
@@ -36,22 +30,57 @@ class ModelOrchestrator:
         self.active_provider_name: str = self.providers[0].provider_name
         self.model_switch_history: list[dict[str, Any]] = []
 
+    def rehydrate_providers(self) -> None:
+        # update provider keys dynamically
+        google_key = settings.google_api_key or settings.gemini_api_key
+        openai_key = settings.openai_api_key
+        anthropic_key = settings.anthropic_api_key
+        ollama_url = settings.ollama_base_url
+
+        self.providers: list[LLMProvider] = [
+            GoogleGeminiProvider(api_key=google_key, model_name=settings.default_model),
+            OpenAIProvider(api_key=openai_key, model_name="gpt-4o-mini"),
+            AnthropicProvider(api_key=anthropic_key),
+            OllamaProvider(base_url=ollama_url),
+            DeterministicMockProvider(),
+        ]
+
     async def chat(
         self,
         messages: list[ChatMessage],
         tools: list[ToolDefinition] | None = None,
         system_instruction: str = "",
+        preferred_provider: str = "",
+        preferred_model: str = "",
     ) -> ProviderResponse:
-        # route across providers
+        # always ensure fresh credentials
+        self.rehydrate_providers()
+
+        # sort providers: preferred first, then providers with keys, then mock
+        ordered_providers = list(self.providers)
+        if preferred_provider:
+            p_match = [p for p in ordered_providers if p.provider_name.lower() == preferred_provider.lower()]
+            p_rest = [p for p in ordered_providers if p.provider_name.lower() != preferred_provider.lower()]
+            if p_match:
+                if preferred_model:
+                    p_match[0].model_name = preferred_model
+                ordered_providers = p_match + p_rest
+
         errors: list[str] = []
 
-        for provider in self.providers:
+        for provider in ordered_providers:
             p_name = provider.provider_name
-            cb = self.circuit_breakers[p_name]
+            cb = self.circuit_breakers.get(p_name)
 
-            if not cb.can_execute():
+            if cb and not cb.can_execute():
                 logger.warning("skipping tripped circuit", extra={"provider": p_name})
                 continue
+
+            # skip external providers with empty keys
+            if p_name in ("google", "openai", "anthropic"):
+                key = getattr(provider, "api_key", "")
+                if not key:
+                    continue
 
             tracer = get_tracer()
             try:
@@ -73,7 +102,9 @@ class ModelOrchestrator:
                         tools=tools,
                         system_instruction=system_instruction,
                     )
-                cb.record_success()
+
+                if cb:
+                    cb.record_success()
 
                 if self.active_provider_name != p_name:
                     logger.info(
@@ -89,7 +120,8 @@ class ModelOrchestrator:
 
                 return response
             except Exception as e:
-                cb.record_failure()
+                if cb:
+                    cb.record_failure()
                 err_msg = f"{p_name}: {str(e)}"
                 logger.error("provider failed", extra={"provider": p_name, "error": str(e)})
                 errors.append(err_msg)
@@ -98,7 +130,7 @@ class ModelOrchestrator:
         return ProviderResponse(
             content=(
                 "Fitur AI sedang dalam mode terdegradasi karena provider model tidak tersedia. "
-                "Silakan gunakan dashboard manual untuk pemantauan dan operasional."
+                "Silakan periksa konfigurasi API key atau gunakan dashboard pemantauan."
             ),
             tool_calls=[],
             model_used="degraded-mode",
@@ -116,7 +148,9 @@ class ModelOrchestrator:
                 {
                     "name": p.provider_name,
                     "model": p.model_name,
-                    "circuit_state": self.circuit_breakers[p.provider_name].state.value,
+                    "circuit_state": self.circuit_breakers[p.provider_name].state.value
+                    if p.provider_name in self.circuit_breakers
+                    else "closed",
                 }
                 for p in self.providers
             ],

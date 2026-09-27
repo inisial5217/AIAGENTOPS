@@ -40,6 +40,16 @@ func (m *mockAIRepo) UpdateSessionActivity(ctx context.Context, id uuid.UUID) er
 	return args.Error(0)
 }
 
+func (m *mockAIRepo) DeleteSession(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	args := m.Called(ctx, id, userID)
+	return args.Error(0)
+}
+
+func (m *mockAIRepo) UpdateSessionTitle(ctx context.Context, id uuid.UUID, title string) error {
+	args := m.Called(ctx, id, title)
+	return args.Error(0)
+}
+
 func (m *mockAIRepo) CreateMessage(ctx context.Context, message *model.AIMessage) error {
 	args := m.Called(ctx, message)
 	return args.Error(0)
@@ -87,6 +97,10 @@ type mockAIClient struct {
 func (m *mockAIClient) Chat(ctx context.Context, sessionID string, userID string, message string, role string, history []map[string]string) (*integration.AIChatClientResponse, error) {
 	args := m.Called(ctx, sessionID, userID, message, role, history)
 	return args.Get(0).(*integration.AIChatClientResponse), args.Error(1)
+}
+
+func (m *mockAIClient) ChatWithOptions(ctx context.Context, sessionID string, userID string, message string, role string, history []map[string]string, provider *string, model *string) (*integration.AIChatClientResponse, error) {
+	return m.Chat(ctx, sessionID, userID, message, role, history)
 }
 
 func (m *mockAIClient) Diagnose(ctx context.Context, incidentID string, alertName string, severity string, resource string, namespace string, logs string, metrics map[string]interface{}) (*integration.AIDiagnoseClientResponse, error) {

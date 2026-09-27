@@ -11,10 +11,18 @@ import (
 type AISession struct {
 	ID              uuid.UUID `json:"id" db:"id"`
 	UserID          uuid.UUID `json:"user_id" db:"user_id"`
+	Title           string    `json:"title" db:"title"`
 	Status          string    `json:"status" db:"status"`
 	ModelPreference *string   `json:"model_preference,omitempty" db:"model_preference"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	LastActivityAt  time.Time `json:"last_activity_at" db:"last_activity_at"`
+}
+
+// CreateSessionRequest incoming create session
+type CreateSessionRequest struct {
+	Title           string  `json:"title"`
+	Provider        string  `json:"provider"`
+	ModelPreference *string `json:"model"`
 }
 
 // AIMessage conversation message
@@ -73,6 +81,7 @@ type AIToolCall struct {
 type AIChatRequest struct {
 	SessionID       *uuid.UUID `json:"session_id,omitempty"`
 	Message         string     `json:"message" validate:"required"`
+	Provider        *string    `json:"provider,omitempty"`
 	ModelPreference *string    `json:"model_preference,omitempty"`
 }
 

@@ -35,6 +35,10 @@ func (rl *RateLimiter) LimitIP(limit int, window time.Duration) echo.MiddlewareF
 				return next(c)
 			}
 
+			if c.Request().Method == http.MethodOptions {
+				return next(c)
+			}
+
 			path := c.Path()
 			if path == "/healthz" || path == "/readyz" || path == "/metrics" || path == "/ws" {
 				return next(c)
@@ -55,6 +59,10 @@ func (rl *RateLimiter) LimitUser(limit int, window time.Duration) echo.Middlewar
 				return next(c)
 			}
 
+			if c.Request().Method == http.MethodOptions {
+				return next(c)
+			}
+
 			userID := c.Get("user_id")
 			identifier := c.RealIP()
 			if userID != nil {
@@ -71,7 +79,7 @@ func (rl *RateLimiter) LimitUser(limit int, window time.Duration) echo.Middlewar
 
 // applyLimit sliding window logic
 func (rl *RateLimiter) applyLimit(c echo.Context, next echo.HandlerFunc, key string, limit int, window time.Duration) error {
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 	defer cancel()
 
 	now := time.Now().UnixNano()
@@ -88,7 +96,7 @@ func (rl *RateLimiter) applyLimit(c echo.Context, next echo.HandlerFunc, key str
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		if rl.logger != nil {
-			rl.logger.Warn("ratelimit redis error", slog.String("error", err.Error()))
+			rl.logger.Debug("ratelimit redis unavailable, failing open", slog.String("error", err.Error()))
 		}
 		// fail open on error
 		return next(c)

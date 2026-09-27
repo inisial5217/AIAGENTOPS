@@ -4,6 +4,7 @@ import * as React from "react";
 import { Cpu, HardDrive, Wifi, Sparkles, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { dockerService } from "../../services/docker-service";
+import { aiService } from "../../services/ai-service";
 
 export function HostResourceUsage() {
   const [activeTab, setActiveTab] = React.useState<"cpu" | "network" | "ai">("cpu");
@@ -36,6 +37,19 @@ export function HostResourceUsage() {
   const { data: stats } = useQuery({
     queryKey: ["monitoring", "dashboard-stats"],
     queryFn: () => dockerService.getDashboardStats(),
+    refetchInterval: 15000,
+  });
+
+  // Fetch real AI token usage and cost metrics
+  const {
+    data: aiUsage,
+    isLoading: isAiLoading,
+    isRefetching: isAiRefetching,
+    refetch: refetchAi,
+  } = useQuery({
+    queryKey: ["ai", "usage-stats"],
+    queryFn: () => aiService.getUsageStats(),
+    enabled: activeTab === "ai",
     refetchInterval: 15000,
   });
 
@@ -132,12 +146,13 @@ export function HostResourceUsage() {
     return `0,${height} ${polyline} ${width},${height}`;
   };
 
-  const handleRefresh = () => {
-    refetchCpu();
-    refetchNet();
-  };
+  const isAnyRefetching = isCpuRefetching || isNetRefetching || isAiRefetching;
 
-  const isAnyRefetching = isCpuRefetching || isNetRefetching;
+  const handleRefresh = () => {
+    if (activeTab === "cpu") refetchCpu();
+    else if (activeTab === "network") refetchNet();
+    else if (activeTab === "ai") refetchAi();
+  };
 
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
@@ -304,8 +319,12 @@ export function HostResourceUsage() {
           ) : (
             <div className="w-full h-full flex flex-col justify-center items-center gap-2 text-xs font-mono text-[var(--text-secondary)]">
               <Sparkles className="w-6 h-6 text-pink-400 animate-pulse" />
-              <span>Prompt Tokens: 8,420 &bull; Completion Tokens: 5,780</span>
-              <span className="text-[10px] text-[var(--text-muted)]">Avg Inference: 42ms (Gemini 2.5 Pro)</span>
+              <span>
+                Prompt Tokens: <strong className="text-[var(--text-primary)]">{aiUsage?.prompt_tokens?.toLocaleString() ?? 0}</strong> &bull; Completion Tokens: <strong className="text-[var(--text-primary)]">{aiUsage?.completion_tokens?.toLocaleString() ?? 0}</strong>
+              </span>
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Active Engine: <span className="text-pink-400 font-semibold">{aiUsage?.active_model || "Gemini 2.0 Flash / OpenAI"}</span> &bull; {aiUsage?.total_calls ?? 0} Total Inferences
+              </span>
             </div>
           )}
         </div>
@@ -350,13 +369,13 @@ export function HostResourceUsage() {
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#ec4899]" />
                 <span className="text-[var(--text-secondary)]">
-                  Total Tokens: <strong className="text-[var(--text-primary)]">14,200</strong>
+                  Total Tokens: <strong className="text-[var(--text-primary)]">{aiUsage?.total_tokens?.toLocaleString() ?? 0}</strong>
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#06b6d4]" />
                 <span className="text-[var(--text-secondary)]">
-                  Budget Used: <strong className="text-[var(--text-primary)]">$0.04 / $20.00</strong>
+                  Est. Cost: <strong className="text-[var(--text-primary)]">${aiUsage?.total_cost_usd?.toFixed(4) ?? "0.0000"} USD</strong>
                 </span>
               </div>
             </div>

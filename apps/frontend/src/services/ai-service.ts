@@ -111,6 +111,11 @@ export const aiService = {
     return res.data?.data || res.data;
   },
 
+  // deleteSession removes a chat session
+  async deleteSession(sessionId: string): Promise<void> {
+    await apiClient.delete(`/api/v1/ai/sessions/${sessionId}`);
+  },
+
   // getSessionMessages retrieves history for a session
   async getSessionMessages(sessionId: string): Promise<AIMessage[]> {
     const res = await apiClient.get(`/api/v1/ai/sessions/${sessionId}/messages`);

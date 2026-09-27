@@ -1,0 +1,1 @@
+ALTER TABLE ai_sessions ADD COLUMN IF NOT EXISTS title VARCHAR(200) DEFAULT 'New Conversation';

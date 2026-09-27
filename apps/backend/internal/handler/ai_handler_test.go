@@ -27,6 +27,19 @@ func (m *mockAIService) ProcessChat(ctx context.Context, userID uuid.UUID, role 
 	return nil, args.Error(1)
 }
 
+func (m *mockAIService) CreateSession(ctx context.Context, userID uuid.UUID, title string, provider string, modelPref *string) (*model.AISession, error) {
+	args := m.Called(ctx, userID, title, provider, modelPref)
+	if sess, ok := args.Get(0).(*model.AISession); ok {
+		return sess, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockAIService) DeleteSession(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) error {
+	args := m.Called(ctx, sessionID, userID)
+	return args.Error(0)
+}
+
 func (m *mockAIService) ListSessions(ctx context.Context, userID uuid.UUID) ([]model.AISession, error) {
 	args := m.Called(ctx, userID)
 	return args.Get(0).([]model.AISession), args.Error(1)
@@ -148,3 +161,59 @@ func TestHandleGetUsage_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestHandleCreateSession_Success(t *testing.T) {
+	e := echo.New()
+	svc := new(mockAIService)
+	h := NewAIHandler(svc)
+
+	userID := uuid.New()
+	sessID := uuid.New()
+	pref := "gemini-2.0-flash"
+	expectedSess := &model.AISession{
+		ID:              sessID,
+		UserID:          userID,
+		Title:           "Custom Session",
+		Status:          "active",
+		ModelPreference: &pref,
+	}
+
+	svc.On("CreateSession", mock.Anything, userID, "Custom Session", "google", (*string)(nil)).Return(expectedSess, nil)
+
+	body := `{"title":"Custom Session","provider":"google"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/sessions", bytes.NewBufferString(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("user_id", userID)
+	c.Set("user_role", "viewer")
+
+	err := h.HandleCreateSession(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}
+
+func TestHandleDeleteSession_Success(t *testing.T) {
+	e := echo.New()
+	svc := new(mockAIService)
+	h := NewAIHandler(svc)
+
+	userID := uuid.New()
+	sessID := uuid.New()
+
+	svc.On("DeleteSession", mock.Anything, sessID, userID).Return(nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/ai/sessions/"+sessID.String(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/ai/sessions/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(sessID.String())
+	c.Set("user_id", userID)
+	c.Set("user_role", "viewer")
+
+	err := h.HandleDeleteSession(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+

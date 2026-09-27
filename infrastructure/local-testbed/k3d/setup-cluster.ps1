@@ -24,7 +24,7 @@ if ($existing) {
     k3d cluster delete cifo-dev
 }
 
-Write-Host "==> Creating K3d cluster cifo-dev (1 server, 2 agents)..." -ForegroundColor Cyan
+Write-Host "==> Creating K3d cluster cifo-dev (1 server node)..." -ForegroundColor Cyan
 k3d cluster create --config cluster-config.yaml
 
 # Fix Windows localhost connection to 127.0.0.1 and ensure context

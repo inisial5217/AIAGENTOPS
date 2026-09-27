@@ -22,13 +22,39 @@ func NewRedisClient(ctx context.Context, addr string, password string, logger *s
 		MinIdleConns: 5,
 	})
 
-	// ping redis
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	// ping redis with retries
+	var pingErr error
+	maxRetries := 10
+	retryInterval := 2 * time.Second
 
-	if err := client.Ping(pingCtx).Err(); err != nil {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		pingErr = client.Ping(pingCtx).Err()
+		cancel()
+
+		if pingErr == nil {
+			break
+		}
+
+		if logger != nil {
+			logger.Warn("waiting for redis ready",
+				slog.Int("attempt", attempt),
+				slog.Int("max_attempts", maxRetries),
+				slog.String("error", pingErr.Error()),
+			)
+		}
+
+		select {
+		case <-ctx.Done():
+			_ = client.Close()
+			return nil, ctx.Err()
+		case <-time.After(retryInterval):
+		}
+	}
+
+	if pingErr != nil {
 		_ = client.Close()
-		return nil, fmt.Errorf("ping redis: %w", err)
+		return nil, fmt.Errorf("ping redis: %w", pingErr)
 	}
 
 	if logger != nil {

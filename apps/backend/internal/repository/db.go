@@ -19,9 +19,10 @@ func NewPostgresPool(ctx context.Context, dsn string, logger *slog.Logger) (*pgx
 
 	// attach otel query tracer
 	cfg.ConnConfig.Tracer = telemetry.NewDBQueryTracer()
+	cfg.ConnConfig.ConnectTimeout = 5 * time.Second
 
 	// configure connection pool
-	cfg.MinConns = 5
+	cfg.MinConns = 1
 	cfg.MaxConns = 25
 	cfg.MaxConnLifetime = 1 * time.Hour
 	cfg.MaxConnIdleTime = 15 * time.Minute
@@ -32,13 +33,39 @@ func NewPostgresPool(ctx context.Context, dsn string, logger *slog.Logger) (*pgx
 		return nil, fmt.Errorf("create pool: %w", err)
 	}
 
-	// ping database
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	// ping database with retries
+	var pingErr error
+	maxRetries := 15
+	retryInterval := 2 * time.Second
 
-	if err := pool.Ping(pingCtx); err != nil {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		pingErr = pool.Ping(pingCtx)
+		cancel()
+
+		if pingErr == nil {
+			break
+		}
+
+		if logger != nil {
+			logger.Warn("waiting for database ready",
+				slog.Int("attempt", attempt),
+				slog.Int("max_attempts", maxRetries),
+				slog.String("error", pingErr.Error()),
+			)
+		}
+
+		select {
+		case <-ctx.Done():
+			pool.Close()
+			return nil, ctx.Err()
+		case <-time.After(retryInterval):
+		}
+	}
+
+	if pingErr != nil {
 		pool.Close()
-		return nil, fmt.Errorf("ping db: %w", err)
+		return nil, fmt.Errorf("ping db: %w", pingErr)
 	}
 
 	if logger != nil {

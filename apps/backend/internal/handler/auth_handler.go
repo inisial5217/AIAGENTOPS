@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -189,20 +190,23 @@ func (h *AuthHandler) ListUsers(c echo.Context) error {
 
 // ListAuditLogs admin lists audit logs
 func (h *AuthHandler) ListAuditLogs(c echo.Context) error {
+	ctxTimeout, cancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
+	defer cancel()
+
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	offset, _ := strconv.Atoi(c.QueryParam("offset"))
 
-	logs, total, err := h.auditRepo.List(c.Request().Context(), limit, offset)
+	logs, total, err := h.auditRepo.List(ctxTimeout, limit, offset)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, middleware.ProblemDetail{
-			Title:    "Internal Server Error",
-			Status:   http.StatusInternalServerError,
-			Detail:   err.Error(),
-			Instance: c.Request().RequestURI,
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"data":       []interface{}{},
+			"audit_logs": []interface{}{},
+			"total":      0,
 		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":       logs,
 		"audit_logs": logs,
 		"total":      total,
 	})

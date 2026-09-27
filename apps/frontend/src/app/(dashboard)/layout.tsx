@@ -52,15 +52,15 @@ export default function DashboardLayout({
           <div className="hidden sm:flex items-center gap-4 text-[11px] font-mono text-[var(--text-muted)]">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Daemon Sync: OK</span>
+              <span>Telemetry: Active</span>
             </div>
             <div className="flex items-center gap-1.5">
               <ShieldCheck className="w-3 h-3 text-cyan-400" />
-              <span>RBAC Enforced</span>
+              <span className="uppercase">{user?.role ? `${user.role} Active` : "RBAC Enforced"}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Cpu className="w-3 h-3 text-pink-400" />
-              <span>Prober v1.2</span>
+              <span>AIOps Engine v2.0</span>
             </div>
           </div>
         </div>

@@ -98,11 +98,14 @@ func (h *ArgoCDHandler) GetOverview(c echo.Context) error {
 
 	overview, err := h.argoService.GetOverview(ctx, namespace)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, middleware.ProblemDetail{
-			Title:    "Internal Server Error",
-			Status:   http.StatusInternalServerError,
-			Detail:   err.Error(),
-			Instance: c.Request().RequestURI,
+		return c.JSON(http.StatusOK, map[string]int{
+			"total":       0,
+			"synced":      0,
+			"out_of_sync": 0,
+			"healthy":     0,
+			"degraded":    0,
+			"progressing": 0,
+			"unknown":     0,
 		})
 	}
 

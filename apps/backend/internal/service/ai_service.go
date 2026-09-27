@@ -20,6 +20,8 @@ import (
 // AIService business interface
 type AIService interface {
 	ProcessChat(ctx context.Context, userID uuid.UUID, role string, req *model.AIChatRequest) (*model.AIChatResponse, error)
+	CreateSession(ctx context.Context, userID uuid.UUID, title string, provider string, modelPref *string) (*model.AISession, error)
+	DeleteSession(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) error
 	ListSessions(ctx context.Context, userID uuid.UUID) ([]model.AISession, error)
 	GetSessionMessages(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) ([]model.AIMessage, error)
 	ApproveTool(ctx context.Context, approvalID uuid.UUID, userID uuid.UUID, role string) (*model.AIActionAuditLog, error)
@@ -71,8 +73,13 @@ func (s *DefaultAIService) ProcessChat(
 		sessionID = *req.SessionID
 		_ = s.repo.UpdateSessionActivity(ctx, sessionID)
 	} else {
+		title := req.Message
+		if len(title) > 36 {
+			title = title[:36] + "..."
+		}
 		newSession := &model.AISession{
 			UserID:          userID,
+			Title:           title,
 			Status:          "active",
 			ModelPreference: req.ModelPreference,
 		}
@@ -105,7 +112,7 @@ func (s *DefaultAIService) ProcessChat(
 	_ = s.repo.CreateMessage(ctx, userMsg)
 
 	// dispatch to ai service
-	clientResp, err := s.client.Chat(ctx, sessionID.String(), userID.String(), req.Message, role, historyList)
+	clientResp, err := s.client.ChatWithOptions(ctx, sessionID.String(), userID.String(), req.Message, role, historyList, req.Provider, req.ModelPreference)
 	if err != nil {
 		slog.Error("ai chat failure", "error", err)
 		return nil, fmt.Errorf("ai service communication: %w", err)
@@ -209,6 +216,40 @@ func (s *DefaultAIService) ProcessChat(
 		ToolCalls:        parsedTools,
 		SecurityFlag:     clientResp.SecurityFlag,
 	}, nil
+}
+
+// CreateSession new chat session
+func (s *DefaultAIService) CreateSession(
+	ctx context.Context,
+	userID uuid.UUID,
+	title string,
+	provider string,
+	modelPref *string,
+) (*model.AISession, error) {
+	// sanitize session title
+	if title == "" {
+		title = "New Conversation"
+	}
+	session := &model.AISession{
+		UserID:          userID,
+		Title:           title,
+		Status:          "active",
+		ModelPreference: modelPref,
+	}
+	if err := s.repo.CreateSession(ctx, session); err != nil {
+		return nil, fmt.Errorf("create ai session: %w", err)
+	}
+	return session, nil
+}
+
+// DeleteSession remove chat session
+func (s *DefaultAIService) DeleteSession(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	userID uuid.UUID,
+) error {
+	// delete session repository
+	return s.repo.DeleteSession(ctx, sessionID, userID)
 }
 
 // ListSessions list user sessions
@@ -374,6 +415,18 @@ func (s *DefaultAIService) executeReadOnlyTool(ctx context.Context, name string,
 
 	case "get_container_logs":
 		cid, _ := params["container_id"].(string)
+		tailF, ok := params["tail_lines"].(float64)
+		tail := 100
+		if ok && tailF > 0 {
+			tail = int(tailF)
+		}
+		if s.dockerSvc != nil {
+			logs, err := s.dockerSvc.GetContainerLogs(ctx, cid, tail)
+			if err == nil {
+				return logs
+			}
+			return fmt.Sprintf("Error fetching logs: %v", err)
+		}
 		return fmt.Sprintf("Retrieved recent logs for container '%s'", cid)
 
 	case "list_docker_containers":

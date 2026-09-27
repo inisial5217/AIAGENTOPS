@@ -3,10 +3,10 @@ kind: Simple
 metadata:
   name: cifo-dev
 servers: 1
-agents: 2
+agents: 0
 image: rancher/k3s:v1.28.8-k3s1
 kubeAPI:
-  hostIP: "127.0.0.1"
+  hostIP: "0.0.0.0"
   hostPort: "6443"
 ports:
   - port: 8443:443

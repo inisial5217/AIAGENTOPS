@@ -1419,7 +1419,7 @@ Buat Helm charts di `/infrastructure/kubernetes/charts/`:
 
 ## CATATAN PENTING
 
-1. Estimasi waktu di atas adalah untuk satu developer berpengalaman yang bekerja full-time. Dengan tim, waktu bisa diparalelkan secara signifikan.
+1. Estimasi waktu di atas adalah untuk satu developer berpengalaman yang bekerja full-time. Dengan tim, waktu bisa diparalelkan secara signifikan.`
 2. Fase 2-4 (Backend + Auth + Frontend Foundation) adalah yang paling kritis. Jika fondasi ini salah, seluruh bangunan di atasnya akan runtuh. Alokasikan waktu ekstra untuk review di sini.
 3. Setiap akhir fase, lakukan review singkat: apakah ada penyimpangan dari arsitektur? Jika ada, perbarui dokumen arsitektur.
 4. Jangan skip testing (Fase 13) atau security hardening (Fase 12). Hutang teknis di area ini akan menjadi bom waktu.

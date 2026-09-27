@@ -1,0 +1,135 @@
+# Integrasi Multi-Akun AI Chat History & Otomatisasi 1-Click ArgoCD/K3d di CIFO
+
+Dokumen ini merinci arsitektur dan langkah teknis untuk menjawab pertanyaan dan kebutuhan Anda:
+1. **Kapabilitas AI Chat & Deployment dari Gitea** (Arsitektur GitOps AIOps).
+2. **Riwayat Chat AI Persisten per Akun Pengguna** (Database, Backend API Session, dan UI History Drawer).
+3. **Otomatisasi 1-Click Startup**: Menjalankan `start-cifo.bat` langsung menyalakan Kubernetes (K3d), ArgoCD, data testbed, Vault, backend, frontend, dan AI service sekaligus.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Penyimpanan Chat History**: Sesi dan riwayat chat akan disimpan di tabel PostgreSQL `ai_sessions` dan `ai_messages` terikat pada `user_id` masing-masing akun yang sedang login (Admin, DevOps, atau Viewer). Setiap akun akan memiliki riwayat chat mandiri yang tersimpan permanen dan tidak terhapus saat berpindah akun atau me-refresh browser.
+
+> [!NOTE]
+> **Waktu Startup `start-cifo.bat`**: Menambahkan Kubernetes & ArgoCD ke dalam peluncur utama akan memverifikasi klaster K3d terlebih dahulu sebelum menyalakan backend dan frontend. Jika klaster sudah ada, proses ini hanya memakan waktu ~5-10 detik.
+
+---
+
+## 1. Arsitektur: Bagaimana AI Chat Bisa Men-deploy dari Gitea?
+
+AI Assistant pada platform CIFO dirancang dengan arsitektur **Autonomous GitOps Agent with Human-In-The-Loop (HITL)**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as DevOps / Admin (Chat UI)
+    participant AI as CIFO AI Assistant (LLM)
+    participant Backend as Go Backend Engine
+    participant Argo as ArgoCD GitOps
+    participant Gitea as Gitea Git Repository
+    participant K8s as Kubernetes Cluster (K3d)
+
+    User->>AI: "Deploy versi terbaru aplikasi payment dari Gitea repo"
+    AI->>AI: Intent Recognition & Tool Calling (sync_argocd_app / create_app)
+    AI-->>User: Menampilkan "Interactive Approval Card" (Butuh persetujuan peran DevOps/Admin)
+    User->>AI: Klik tombol "Approve"
+    AI->>Backend: POST /api/v1/ai/tools/{id}/approve
+    Backend->>Argo: Trigger App Sync / Refresh Git Target
+    Argo->>Gitea: Fetch latest commit & manifests (Kustomize/Helm/YAML)
+    Argo->>K8s: Reconcile desired state (Deploy Pods & Services)
+    Argo-->>Backend: Sync Success (Commit: a1b2c3d, Health: Healthy)
+    Backend-->>AI: Execution Result
+    AI-->>User: "Aplikasi berhasil di-deploy dari Gitea ke namespace production!"
+```
+
+### Apa saja yang sudah & bisa dilakukan AI Chat?
+1. **Operasi Baca (Read-Only Tools - Tanpa Approval)**:
+   - Memeriksa kesehatan pod (`get_pods`, `describe_pod`).
+   - Membaca log container bermasalah (`get_pod_logs`, `get_container_logs`).
+   - Memeriksa status GitOps ArgoCD (`get_argocd_app_status`, `get_argocd_history`).
+   - Root Cause Analysis (RCA) insiden secara otomatis.
+2. **Operasi Tulis/Aksi (Write Tools - Wajib Approval Pengguna)**:
+   - **Deploy / GitOps Sync**: `sync_argocd_app` memerintahkan ArgoCD menarik manifest terbaru dari Gitea/GitHub dan menerapkannya ke klaster.
+   - **Self-Healing & Remediasi**: `restart_deployment`, `scale_deployment` (menaikkan/menurunkan replika pod).
+   - **Docker Control**: `restart_docker_container`.
+
+---
+
+## Proposed Changes
+
+Grouped by component layer:
+
+### Component 1: Master Launcher (`start-cifo.bat` & `scripts/start-all.ps1`)
+
+Menyatukan aktivasi Kubernetes (K3d) dan ArgoCD ke dalam peluncur utama.
+
+#### [MODIFY] [scripts/start-all.ps1](file:///d:/agent%20v2/scripts/start-all.ps1)
+- Tambahkan step `[3.5/7]` sebelum microservices: Memastikan klaster K3d `cifo-dev` dan ArgoCD aktif, port-forward 8444/8443 berjalan, dan sample apps terpasang.
+- Menggunakan skrip teruji yang sudah kita buat di `scripts/start-k8s-argocd.ps1`.
+
+#### [MODIFY] [scripts/stop-all.ps1](file:///d:/agent%20v2/scripts/stop-all.ps1)
+- Pastikan memanggil `scripts/stop-k8s-argocd.ps1` agar saat `stop-cifo.bat` ditekan, klaster K3d juga berhenti rapi dan membebaskan RAM.
+
+---
+
+### Component 2: Backend AI Chat Persistence & Sessions
+
+#### [MODIFY] [apps/backend/cmd/server/main.go](file:///d:/agent%20v2/apps/backend/cmd/server/main.go)
+- Daftarkan endpoint `aiGroup.POST("/sessions", aiHandler.HandleCreateSession)`.
+- Daftarkan endpoint `aiGroup.DELETE("/sessions/:id", aiHandler.HandleDeleteSession)`.
+
+#### [MODIFY] [apps/backend/internal/handler/ai_handler.go](file:///d:/agent%20v2/apps/backend/internal/handler/ai_handler.go)
+- Implementasikan `HandleCreateSession`: Membuat sesi baru untuk user yang terautentikasi dan mengembalikan objek `AISession`.
+- Implementasikan `HandleDeleteSession`: Menghapus sesi beserta seluruh pesannya (cascade).
+
+#### [MODIFY] [apps/backend/internal/service/ai_service.go](file:///d:/agent%20v2/apps/backend/internal/service/ai_service.go)
+- Tambahkan method `CreateSession(ctx, userID, title, provider, model)` ke interface `AIService`.
+- Tambahkan method `DeleteSession(ctx, sessionID, userID)` ke interface `AIService`.
+
+#### [MODIFY] [apps/backend/internal/repository/ai_repository.go](file:///d:/agent%20v2/apps/backend/internal/repository/ai_repository.go)
+- Tambahkan query `DeleteSession(ctx, id, userID)`.
+- Perbarui model sesi agar mendukung penamaan otomatis (*first prompt snippet* sebagai judul sesi).
+
+---
+
+### Component 3: Frontend AI Chat History UI
+
+#### [MODIFY] [apps/frontend/src/components/ai-chat/chat-container.tsx](file:///d:/agent%20v2/apps/frontend/src/components/ai-chat/chat-container.tsx)
+- Tambahkan tombol **Riwayat Chat** (`History` / `MessageSquare` icon) di header chat.
+- Tambahkan **Collapsible Sidebar / Drawer Riwayat Sesi**:
+  - Menampilkan daftar percakapan sebelumnya untuk akun pengguna saat ini (Admin / DevOps / Viewer).
+  - Menampilkan waktu aktivitas (*e.g. Just now, 10m ago*).
+  - Tombol hapus sesi jika pengguna ingin membersihkan chat tertentu.
+  - Saat sesi diklik, pesan percakapan lama langsung dimuat kembali secara utuh.
+- Hubungkan pembuatan chat baru (`handleStartNewChat`) ke API `aiService.createSession` dengan benar.
+
+#### [MODIFY] [apps/frontend/src/services/ai-service.ts](file:///d:/agent%20v2/apps/frontend/src/services/ai-service.ts)
+- Tambahkan method `deleteSession(sessionId: string)` ke `aiService`.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Jalankan unit test backend:
+  ```powershell
+  cd "d:\agent v2\apps\backend"; go test -v ./internal/service/ -run "TestProcessChat|TestCreateSession"
+  ```
+- Jalankan unit test frontend:
+  ```powershell
+  cd "d:\agent v2\apps\frontend"; npm run test -- ai-service.test.ts
+  ```
+
+### Manual Verification
+1. **Verifikasi 1-Click Startup**:
+   - Jalankan `.\start-cifo.bat`.
+   - Pastikan K3d `cifo-dev`, ArgoCD, Postgres, Vault, Backend, AI, dan Frontend menyala otomatis.
+2. **Verifikasi Multi-Akun Chat Persistence**:
+   - Login sebagai `admin@cifo.local` -> Buka AI Chat -> Kirim pesan "Cek status pod" -> Buka panel Riwayat -> Verifikasi sesi muncul.
+   - Logout -> Login sebagai `devops@cifo.local` -> Buka AI Chat -> Verifikasi riwayat chat Admin tidak bercampur dengan DevOps.
+   - Kirim pesan baru sebagai DevOps -> Logout dan login kembali -> Verifikasi chat DevOps tetap utuh.
+3. **Verifikasi Gitea & GitOps Tool**:
+   - Tanyakan pada AI: "Bagaimana status aplikasi GitOps ArgoCD?"
+   - AI akan memanggil tool `get_argocd_app_status` dan menampilkan data real dari klaster.

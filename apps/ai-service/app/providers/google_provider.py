@@ -31,7 +31,14 @@ class GoogleGeminiProvider(LLMProvider):
         if not self.api_key:
             raise ValueError("Google API key not configured")
 
-        url = f"{self.base_url}/{self.model_name}:generateContent?key={self.api_key}"
+        url = f"{self.base_url}/{self.model_name}:generateContent"
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+        # support bearer authorization for AQ. format tokens
+        if self.api_key.startswith("AQ.") or "ya29." in self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         # format contents payload
         contents: list[dict[str, Any]] = []
@@ -54,8 +61,13 @@ class GoogleGeminiProvider(LLMProvider):
                 })
             body["tools"] = [{"function_declarations": function_declarations}]
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=body)
+        # 5 second timeout for fast failover
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(url, headers=headers, json=body)
+            if resp.status_code != 200:
+                # fallback query param attempt if header was rejected
+                fallback_url = f"{self.base_url}/{self.model_name}:generateContent?key={self.api_key}"
+                resp = await client.post(fallback_url, json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text}")
             data = resp.json()

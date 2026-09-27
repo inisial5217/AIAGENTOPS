@@ -1,0 +1,1 @@
+ALTER TABLE ai_sessions DROP COLUMN IF EXISTS title;

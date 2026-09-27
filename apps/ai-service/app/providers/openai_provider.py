@@ -53,7 +53,7 @@ class OpenAIProvider(LLMProvider):
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=6.0) as client:
             resp = await client.post(self.endpoint, headers=headers, json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"OpenAI API error {resp.status_code}: {resp.text}")

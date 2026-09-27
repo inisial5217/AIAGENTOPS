@@ -19,6 +19,8 @@ type AIRepository interface {
 	GetSession(ctx context.Context, id uuid.UUID) (*model.AISession, error)
 	ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]model.AISession, error)
 	UpdateSessionActivity(ctx context.Context, id uuid.UUID) error
+	UpdateSessionTitle(ctx context.Context, id uuid.UUID, title string) error
+	DeleteSession(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	CreateMessage(ctx context.Context, message *model.AIMessage) error
 	GetMessagesBySession(ctx context.Context, sessionID uuid.UUID, limit int) ([]model.AIMessage, error)
 	RecordUsage(ctx context.Context, usage *model.AIUsageTracking) error
@@ -43,17 +45,20 @@ func NewPostgresAIRepository(pool *pgxpool.Pool) *PostgresAIRepository {
 func (r *PostgresAIRepository) CreateSession(ctx context.Context, s *model.AISession) error {
 	// insert session record
 	query := `
-		INSERT INTO ai_sessions (id, user_id, status, model_preference, created_at, last_activity_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO ai_sessions (id, user_id, title, status, model_preference, created_at, last_activity_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
+	}
+	if s.Title == "" {
+		s.Title = "New Conversation"
 	}
 	now := time.Now().UTC()
 	s.CreatedAt = now
 	s.LastActivityAt = now
 
-	_, err := r.pool.Exec(ctx, query, s.ID, s.UserID, s.Status, s.ModelPreference, s.CreatedAt, s.LastActivityAt)
+	_, err := r.pool.Exec(ctx, query, s.ID, s.UserID, s.Title, s.Status, s.ModelPreference, s.CreatedAt, s.LastActivityAt)
 	if err != nil {
 		return fmt.Errorf("create ai session: %w", err)
 	}
@@ -64,13 +69,13 @@ func (r *PostgresAIRepository) CreateSession(ctx context.Context, s *model.AISes
 func (r *PostgresAIRepository) GetSession(ctx context.Context, id uuid.UUID) (*model.AISession, error) {
 	// query session by id
 	query := `
-		SELECT id, user_id, status, model_preference, created_at, last_activity_at
+		SELECT id, user_id, COALESCE(title, 'New Conversation'), status, model_preference, created_at, last_activity_at
 		FROM ai_sessions
 		WHERE id = $1
 	`
 	s := &model.AISession{}
 	err := r.pool.QueryRow(ctx, query, id).Scan(
-		&s.ID, &s.UserID, &s.Status, &s.ModelPreference, &s.CreatedAt, &s.LastActivityAt,
+		&s.ID, &s.UserID, &s.Title, &s.Status, &s.ModelPreference, &s.CreatedAt, &s.LastActivityAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -85,7 +90,7 @@ func (r *PostgresAIRepository) GetSession(ctx context.Context, id uuid.UUID) (*m
 func (r *PostgresAIRepository) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]model.AISession, error) {
 	// query sessions by user
 	query := `
-		SELECT id, user_id, status, model_preference, created_at, last_activity_at
+		SELECT id, user_id, COALESCE(title, 'New Conversation'), status, model_preference, created_at, last_activity_at
 		FROM ai_sessions
 		WHERE user_id = $1
 		ORDER BY last_activity_at DESC
@@ -100,12 +105,37 @@ func (r *PostgresAIRepository) ListSessionsByUser(ctx context.Context, userID uu
 	var sessions []model.AISession
 	for rows.Next() {
 		var s model.AISession
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Status, &s.ModelPreference, &s.CreatedAt, &s.LastActivityAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Title, &s.Status, &s.ModelPreference, &s.CreatedAt, &s.LastActivityAt); err != nil {
 			return nil, fmt.Errorf("scan session row: %w", err)
 		}
 		sessions = append(sessions, s)
 	}
 	return sessions, nil
+}
+
+// UpdateSessionTitle change title
+func (r *PostgresAIRepository) UpdateSessionTitle(ctx context.Context, id uuid.UUID, title string) error {
+	// update session title
+	query := `UPDATE ai_sessions SET title = $1 WHERE id = $2`
+	_, err := r.pool.Exec(ctx, query, title, id)
+	if err != nil {
+		return fmt.Errorf("update session title: %w", err)
+	}
+	return nil
+}
+
+// DeleteSession remove session
+func (r *PostgresAIRepository) DeleteSession(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	// delete session record
+	query := `DELETE FROM ai_sessions WHERE id = $1 AND user_id = $2`
+	tag, err := r.pool.Exec(ctx, query, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete ai session: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return apperror.NewNotFound("AI session not found")
+	}
+	return nil
 }
 
 // UpdateSessionActivity touch session timestamp

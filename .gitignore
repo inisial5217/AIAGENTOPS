@@ -16,6 +16,8 @@ bin/
 out/
 coverage/
 *.exe
+*.exe~
+*~
 *.dll
 *.so
 *.dylib
@@ -58,5 +60,7 @@ scratch/
 **/coverage
 **/coverage/
 **/coverage.out
+backendforlaptop2/
+
 **/test-results/
 .pytest_cache/

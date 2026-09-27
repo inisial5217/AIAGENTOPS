@@ -66,6 +66,71 @@ func (h *AIHandler) HandleChat(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// HandleCreateSession create chat session
+func (h *AIHandler) HandleCreateSession(c echo.Context) error {
+	// extract user context
+	userID, ok := getUserID(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, middleware.ProblemDetail{
+			Title:    "Unauthorized",
+			Status:   http.StatusUnauthorized,
+			Detail:   "user unauthenticated",
+			Instance: c.Request().RequestURI,
+		})
+	}
+
+	var req model.CreateSessionRequest
+	_ = c.Bind(&req)
+
+	session, err := h.aiService.CreateSession(c.Request().Context(), userID, req.Title, req.Provider, req.ModelPreference)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, middleware.ProblemDetail{
+			Title:    "Internal Server Error",
+			Status:   http.StatusInternalServerError,
+			Detail:   err.Error(),
+			Instance: c.Request().RequestURI,
+		})
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{"data": session})
+}
+
+// HandleDeleteSession remove chat session
+func (h *AIHandler) HandleDeleteSession(c echo.Context) error {
+	// extract user context
+	userID, ok := getUserID(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, middleware.ProblemDetail{
+			Title:    "Unauthorized",
+			Status:   http.StatusUnauthorized,
+			Detail:   "user unauthenticated",
+			Instance: c.Request().RequestURI,
+		})
+	}
+
+	idStr := c.Param("id")
+	sessionID, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, middleware.ProblemDetail{
+			Title:    "Bad Request",
+			Status:   http.StatusBadRequest,
+			Detail:   "invalid session id",
+			Instance: c.Request().RequestURI,
+		})
+	}
+
+	if err := h.aiService.DeleteSession(c.Request().Context(), sessionID, userID); err != nil {
+		return c.JSON(http.StatusInternalServerError, middleware.ProblemDetail{
+			Title:    "Internal Server Error",
+			Status:   http.StatusInternalServerError,
+			Detail:   err.Error(),
+			Instance: c.Request().RequestURI,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{"message": "session deleted successfully"})
+}
+
 // HandleListSessions get user sessions
 func (h *AIHandler) HandleListSessions(c echo.Context) error {
 	// extract user id

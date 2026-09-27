@@ -1,4 +1,5 @@
 -- System config seed data (no dummy/fake user data)
+CREATE SCHEMA IF NOT EXISTS keycloak;
 
 -- 1. Create table structure if running directly before migrations
 CREATE TABLE IF NOT EXISTS users (

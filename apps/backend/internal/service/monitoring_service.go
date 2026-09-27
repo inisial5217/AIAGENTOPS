@@ -48,8 +48,10 @@ func NewMonitoringService(
 
 // GetDashboardStats computes live KPI statistics
 func (s *monitoringServiceImpl) GetDashboardStats(ctx context.Context) (model.DashboardStats, error) {
-	containers, _ := s.dockerService.ListContainers(ctx, "")
-	sys, _ := s.dockerService.GetSystemInfo(ctx)
+	ctxDocker, cancelDocker := context.WithTimeout(ctx, 3*time.Second)
+	containers, _ := s.dockerService.ListContainers(ctxDocker, "")
+	sys, _ := s.dockerService.GetSystemInfo(ctxDocker)
+	cancelDocker()
 
 	total := len(containers)
 	running := 0
@@ -102,7 +104,8 @@ func (s *monitoringServiceImpl) GetDashboardStats(ctx context.Context) (model.Da
 
 	// aggregate kubernetes workload telemetry
 	if s.k8sService != nil {
-		if k8sPods, kErr := s.k8sService.ListPods(ctx, ""); kErr == nil {
+		ctxK8s, cancelK8s := context.WithTimeout(ctx, 3*time.Second)
+		if k8sPods, kErr := s.k8sService.ListPods(ctxK8s, ""); kErr == nil {
 			for _, pod := range k8sPods {
 				if pod.Status == "Running" {
 					replicas++
@@ -111,6 +114,7 @@ func (s *monitoringServiceImpl) GetDashboardStats(ctx context.Context) (model.Da
 				}
 			}
 		}
+		cancelK8s()
 	}
 
 	return model.DashboardStats{

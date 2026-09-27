@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ChatContainer } from "./chat-container";
 import { aiService } from "../../services/ai-service";
@@ -8,8 +8,11 @@ vi.mock("../../services/ai-service", () => ({
     getModels: vi.fn().mockResolvedValue([
       { id: "gemini-2.0-flash", provider: "google", model_name: "Gemini 2.0 Flash", is_default: true, status: "available" }
     ]),
-    listSessions: vi.fn().mockResolvedValue([]),
-    createSession: vi.fn().mockResolvedValue({ id: "sess-1", title: "New Chat", provider: "google", model: "gemini-2.0-flash" }),
+    listSessions: vi.fn().mockResolvedValue([
+      { id: "sess-1", title: "K8s Pod Diagnosis", provider: "google", model: "gemini-2.0-flash", created_at: "2026-09-08T10:00:00Z" }
+    ]),
+    createSession: vi.fn().mockResolvedValue({ id: "sess-2", title: "New Chat", provider: "google", model: "gemini-2.0-flash" }),
+    deleteSession: vi.fn().mockResolvedValue(undefined),
     getSessionMessages: vi.fn().mockResolvedValue([]),
     sendMessage: vi.fn().mockResolvedValue({
       session_id: "sess-1",
@@ -45,6 +48,27 @@ describe("ChatContainer Component", () => {
     expect(screen.getByPlaceholderText("Ask AI DevOps Assistant... (Shift+Enter for newline)")).toBeDefined();
   });
 
+  it("toggles chat history drawer and shows user sessions", async () => {
+    render(<ChatContainer />);
+    const fab = screen.getByTitle("Open AI DevOps Assistant");
+    fireEvent.click(fab);
+
+    const historyBtn = screen.getByTitle("View Chat History");
+    fireEvent.click(historyBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Chat History")).toBeDefined();
+      expect(screen.getByText("K8s Pod Diagnosis")).toBeDefined();
+    });
+
+    const deleteBtn = screen.getByTitle("Delete Conversation");
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(aiService.deleteSession).toHaveBeenCalledWith("sess-1");
+    });
+  });
+
   it("closes chat window when close button is clicked", async () => {
     render(<ChatContainer />);
     const fab = screen.getByTitle("Open AI DevOps Assistant");
@@ -57,3 +81,4 @@ describe("ChatContainer Component", () => {
     expect(screen.getByTitle("Open AI DevOps Assistant")).toBeDefined();
   });
 });
+

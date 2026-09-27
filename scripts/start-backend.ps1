@@ -37,6 +37,32 @@ if (Test-Path $rootEnv) {
 }
 
 Set-Location "d:\agent v2\apps\backend"
+
+# Pre-flight check: ensure PostgreSQL is ready before starting backend
+Write-Host "Memeriksa kesiapan database PostgreSQL di port 5432..." -ForegroundColor Cyan
+$pgConnected = $false
+for ($i = 1; $i -le 25; $i++) {
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $iar = $tcp.BeginConnect("127.0.0.1", 5432, $null, $null)
+        $wait = $iar.AsyncWaitHandle.WaitOne(1000)
+        if ($wait -and $tcp.Connected) {
+            $tcp.EndConnect($iar)
+            $tcp.Close()
+            $pgConnected = $true
+            break
+        }
+        $tcp.Close()
+    } catch {}
+    Start-Sleep -Seconds 1
+}
+
+if ($pgConnected) {
+    Write-Host "  -> Database PostgreSQL siap dan menerima koneksi." -ForegroundColor Green
+} else {
+    Write-Host "  -> [PERINGATAN] Port 5432 belum merespons, backend akan mencoba koneksi mandiri dengan retry..." -ForegroundColor Yellow
+}
+
 if (Test-Path ".\server.exe") {
     & ".\server.exe"
 } elseif (Test-Path ".\bin\server.exe") {

@@ -29,38 +29,7 @@ interface AuditLogItem {
   created_at: string;
 }
 
-const defaultFallbackLogs: LogEntry[] = [
-  {
-    id: "l-1",
-    time: "10:14:02",
-    tag: "INFO",
-    message: "Docker daemon sync connected (//./pipe/docker_engine).",
-  },
-  {
-    id: "l-2",
-    time: "10:14:15",
-    tag: "INFO",
-    message: "Container prober engine initialized across namespaces.",
-  },
-  {
-    id: "l-3",
-    time: "10:14:18",
-    tag: "AI-OPS",
-    message: "Autonomous telemetry collector started for Docker host.",
-  },
-  {
-    id: "l-4",
-    time: "10:14:25",
-    tag: "INFO",
-    message: "Docker images and volumes cache pre-warmed via Redis.",
-  },
-  {
-    id: "l-5",
-    time: "10:14:30",
-    tag: "INFO",
-    message: "System ready & listening for operational commands.",
-  },
-];
+
 
 export function SystemEventLogs({ isLoading = false }: { isLoading?: boolean }) {
   const [autoScroll, setAutoScroll] = React.useState(true);
@@ -138,7 +107,7 @@ export function SystemEventLogs({ isLoading = false }: { isLoading?: boolean }) 
               message: `${log.username || "system"} performed ${log.action} on ${log.resource} (${log.status})`,
             };
           })
-        : defaultFallbackLogs;
+        : [];
 
     // combine baseline audit logs with incoming live websocket events
     return [...base, ...liveEvents];
@@ -222,6 +191,12 @@ export function SystemEventLogs({ isLoading = false }: { isLoading?: boolean }) 
             <Skeleton variant="text" className="h-4 w-4/5" />
             <Skeleton variant="text" className="h-4 w-11/12" />
             <Skeleton variant="text" className="h-4 w-3/4" />
+          </div>
+        ) : formattedLogs.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-xs font-mono text-[var(--text-muted)] gap-2 py-8 text-center">
+            <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
+            <span>Listening for cluster events via WebSocket stream...</span>
+            <span className="text-[10px] text-[var(--text-secondary)]">No critical anomalies or container mutations in current window</span>
           </div>
         ) : (
           formattedLogs.map((log) => (

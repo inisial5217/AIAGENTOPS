@@ -38,7 +38,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({
     }
   };
 
-  const isPending = toolCall.status === "pending";
+  const isPending = toolCall.status === "pending" || toolCall.status.toUpperCase() === "REQUIRES_APPROVAL";
 
   return (
     <div
@@ -53,7 +53,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({
     >
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-2">
-          {toolCall.status === "pending" ? (
+          {toolCall.status === "pending" || toolCall.status.toUpperCase() === "REQUIRES_APPROVAL" ? (
             <ShieldAlert className="h-4 w-4 text-amber-400" />
           ) : toolCall.status === "approved" || toolCall.status === "executed" ? (
             <CheckCircle className="h-4 w-4 text-emerald-400" />
@@ -67,7 +67,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({
 
         <span
           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-            toolCall.status === "pending"
+            toolCall.status === "pending" || toolCall.status.toUpperCase() === "REQUIRES_APPROVAL"
               ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
               : toolCall.status === "approved" || toolCall.status === "executed"
               ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"

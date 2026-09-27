@@ -48,10 +48,8 @@ export function Sidebar() {
       <div className="h-16 flex items-center justify-between px-4 border-b border-[var(--border-subtle)] shrink-0">
         {!isCollapsed && (
           <div className="flex items-center gap-2.5">
-            <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500/20 via-cyan-500/20 to-transparent border border-pink-500/30">
-              <span className="text-sm font-black tracking-tighter text-white">
-                C<span className="text-[var(--accent-pink)]">I</span>F<span className="text-[var(--accent-default)]">O</span>
-              </span>
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-lg overflow-hidden shrink-0">
+              <img src="/logo-cifo.png" alt="CIFO Logo" className="w-full h-full object-contain" />
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--accent-pink)] animate-ping" />
             </div>
             <div className="flex flex-col text-left">
@@ -66,8 +64,8 @@ export function Sidebar() {
         )}
 
         {isCollapsed && (
-          <div className="mx-auto flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500/20 to-cyan-500/20 border border-cyan-500/30">
-            <span className="text-xs font-black text-white">CF</span>
+          <div className="mx-auto flex items-center justify-center w-10 h-10 rounded-lg overflow-hidden shrink-0">
+            <img src="/logo-cifo.png" alt="CIFO Logo" className="w-full h-full object-contain" />
           </div>
         )}
 
@@ -207,10 +205,10 @@ export function Sidebar() {
           {!isCollapsed && expandedSections.docker && (
             <div className="ml-7 pl-2 border-l border-[var(--border-subtle)] space-y-1 mt-1">
               {[
-                { name: "Host Overview", href: "/docker" },
-                { name: "Containers & Images", href: "/docker/containers" },
-                { name: "Networks & Storage", href: "/docker/networks" },
-                { name: "Compose Stacks", href: "/docker/compose" },
+                { name: "Containers", href: "/docker" },
+                { name: "Images", href: "/docker/images" },
+                { name: "Volumes", href: "/docker/volumes" },
+                { name: "Networks", href: "/docker/networks" },
               ].map((sub) => {
                 const active = pathname === sub.href;
                 return (

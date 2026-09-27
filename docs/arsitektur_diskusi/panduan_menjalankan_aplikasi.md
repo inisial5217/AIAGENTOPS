@@ -127,10 +127,17 @@ Script ini akan:
 
 Jika Anda ingin menguji fitur pemantauan Kubernetes nyata, autoscaling pod, dan sinkronisasi GitOps:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File infrastructure/local-testbed/k3d/setup-cluster.ps1
+```cmd
+start-argocd.bat
 ```
-Script ini akan membuat klaster `k3d-cifo-dev`, mengonfigurasi namespace `cifo-monitoring` dan `argocd`, lalu menginstal ArgoCD controller. Kredensial ArgoCD web UI: `admin` / `admin123`.
+*Atau via PowerShell:*
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-k8s-argocd.ps1
+```
+Script ini akan memastikan klaster `k3d-cifo-dev` aktif, mengonfigurasi namespace `argocd`, mengaktifkan ArgoCD controller, mengambil password admin, dan membuka browser ke `https://localhost:8443`.
+- **URL**: `https://localhost:8443`
+- **Username**: `admin`
+- **Password**: `admin123` (atau password yang ditampilkan langsung di terminal dari secret `argocd-initial-admin-secret`).
 
 ---
 

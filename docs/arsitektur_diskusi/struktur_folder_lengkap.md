@@ -158,6 +158,10 @@ agent v2/                                     # Root direktori monorepo CIFO Pla
 | `package.json` | Node | Manifest monorepo root mendefinisikan workspaces (`apps/*`, `packages/*`) dan skrip global lint, test, build. |
 | `package-lock.json` | Node | Mengunci dependency tree seluruh monorepo Node.js untuk reproduktibilitas build mutlak. |
 | `turbo.json` | Build | Konfigurasi build pipeline Turborepo: mendefinisikan dependency graph, caching outputs, dan task parallelism. |
+| `start-cifo.bat` | Script | Launcher 1-klik Windows untuk menyalakan seluruh stack CIFO (Docker, Vault, Backend Go, AI Python, Frontend). |
+| `stop-cifo.bat` | Script | Stopper 1-klik Windows untuk mematikan seluruh proses aplikasi dan Docker Compose dengan aman. |
+| `start-argocd.bat` | Script | Launcher 1-klik Windows untuk menyalakan klaster Kubernetes K3d dan ArgoCD GitOps server. |
+| `stop-argocd.bat` | Script | Stopper 1-klik Windows untuk menghentikan klaster Kubernetes K3d dan port-forwarding ArgoCD. |
 
 ---
 
